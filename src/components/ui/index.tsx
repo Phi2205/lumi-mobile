@@ -1,28 +1,21 @@
-import React from 'react';
-import {
-  View,
-  Text,
-  TextInput as RNTextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-  StyleSheet,
-  ViewProps,
-  TouchableOpacityProps,
-  TextInputProps as RNTextInputProps,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  ActivityIndicator,
+  TextInput as RNTextInput,
+  TextInputProps as RNTextInputProps,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  TouchableOpacityProps,
+  View,
+  ViewProps,
+} from 'react-native';
 
 // ==========================================
 // 1. GlassCard Component
 // ==========================================
-export function GlassCard({ style, children, ...props }: ViewProps) {
-  return (
-    <View style={[styles.glassCard, style]} {...props}>
-      {children}
-    </View>
-  );
-}
+export { GlassCard } from './GlassCard';
 
 // ==========================================
 // 2. Button Component
@@ -182,5 +175,15 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 });
-export { Collapsible } from './collapsible';
 export { Avatar } from './Avatar';
+export { Collapsible } from './collapsible';
+export { BackgroundWrapper } from './BackgroundWrapper';
+export { GlassBadge } from './GlassBadge';
+export { GlassButton } from './GlassButton';
+export { GlassContainer } from './GlassContainer';
+export { GlassInput } from './GlassInput';
+export { GlassSelect } from './GlassSelect';
+export { GlassStatCard } from './GlassStatCard';
+export { GlassLoading } from './GlassLoading';
+export { GlassNotification } from './GlassNotification';
+

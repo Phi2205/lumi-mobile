@@ -58,18 +58,15 @@ export default function LoginScreen() {
       const { user } = response;
 
       // Lưu thông tin user vào Zustand store (token do cookie tự quản lý)
-      login(
-        {
-          id: user.id,
-          username: user.name || user.email.split("@")[0],
-          email: user.email,
-          fullName: user.name,
-        },
-        ""
-      );
+      login({
+        id: user.id,
+        username: user.name || user.email.split("@")[0],
+        email: user.email,
+        fullName: user.name,
+      });
 
       // Chuyển hướng tới màn hình explore
-      router.replace("/explore");
+      router.replace("/tabs/feed");
     } catch (err: any) {
       console.error("Login error:", err.message);
       setErrors({

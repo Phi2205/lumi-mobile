@@ -1,4 +1,7 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import { secureStorage } from "../services/secureStore";
+import { clearTokens } from "../services/axiosInstance";
 
 export interface User {
   id: string;
@@ -61,30 +64,59 @@ export interface Comment {
 
 interface AuthState {
   user: User | null;
-  token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (user: User, token: string) => void;
+  login: (user: User) => void;
   logout: () => void;
   setLoading: (loading: boolean) => void;
   updateUser: (user: Partial<User>) => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  token: null,
-  isAuthenticated: false,
-  isLoading: true,
-  login: (user, token) =>
-    set({ user, token, isAuthenticated: true, isLoading: false }),
-  logout: () =>
-    set({ user: null, token: null, isAuthenticated: false, isLoading: false }),
-  setLoading: (loading) => set({ isLoading: loading }),
-  updateUser: (updates) =>
-    set((state) => ({
-      user: state.user ? { ...state.user, ...updates } : null,
-    })),
-}));
+const customStorage = {
+  getItem: async (name: string): Promise<string | null> => {
+    return await secureStorage.getItemAsync(name);
+  },
+  setItem: async (name: string, value: string): Promise<void> => {
+    await secureStorage.setItemAsync(name, value);
+  },
+  removeItem: async (name: string): Promise<void> => {
+    await secureStorage.deleteItemAsync(name);
+  },
+};
+
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      user: null,
+      isAuthenticated: false,
+      isLoading: true,
+      login: (user) =>
+        set({ user, isAuthenticated: true, isLoading: false }),
+      logout: () => {
+        clearTokens().catch((err) => console.error("Failed to clear tokens on logout:", err));
+        set({ user: null, isAuthenticated: false, isLoading: false });
+      },
+      setLoading: (loading) => set({ isLoading: loading }),
+      updateUser: (updates) =>
+        set((state) => ({
+          user: state.user ? { ...state.user, ...updates } : null,
+        })),
+    }),
+    {
+      name: "auth-storage",
+      storage: createJSONStorage(() => customStorage),
+      onRehydrateStorage: () => {
+        return (state, error) => {
+          if (error) {
+            console.error("An error occurred during hydration", error);
+          } else if (state) {
+            state.setLoading(false);
+          }
+        };
+      },
+    }
+  )
+);
 
 interface ChatState {
   chats: Chat[];

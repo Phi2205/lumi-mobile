@@ -33,8 +33,10 @@ export default function RootLayout() {
           animation: "slide_from_right",
         }}
       >
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="auth" options={{ headerShown: false }} />
+        <Stack.Screen name="tabs" options={{ headerShown: false }} />
+        {/* Comment out non-existent routes to prevent warnings. 
+            Uncomment them once the files/folders are created.
         <Stack.Screen
           name="chat/[id]"
           options={{
@@ -57,6 +59,7 @@ export default function RootLayout() {
             animation: "slide_from_right",
           }}
         />
+        */}
       </Stack>
     </>
   );
