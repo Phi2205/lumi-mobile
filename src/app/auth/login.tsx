@@ -63,6 +63,8 @@ export default function LoginScreen() {
         username: user.name || user.email.split("@")[0],
         email: user.email,
         fullName: user.name,
+        avatar_url: user.avatar_url,
+        avatar: user.avatar_url,
       });
 
       // Chuyển hướng tới màn hình explore

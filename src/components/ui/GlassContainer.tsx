@@ -4,9 +4,11 @@ import {
   StyleSheet,
   ViewStyle,
   StyleProp,
+  Platform,
 } from "react-native";
 import { BlurView } from "expo-blur";
 import { Colors, BorderRadius, Shadow } from "@/constants/theme";
+import { useBlurTarget } from "@/context/BlurTargetContext";
 
 interface GlassContainerProps {
   children: React.ReactNode;
@@ -21,9 +23,11 @@ export function GlassContainer({
   intensity = 50,
   noPadding = false,
 }: GlassContainerProps) {
+  const blurTarget = useBlurTarget();
+
   return (
-    <View style={[styles.container, Shadow.lg, style]}>
-      <BlurView intensity={intensity} style={styles.blur} tint="dark">
+    <View style={[styles.container, Platform.OS === "android" ? { ...Shadow.lg, elevation: 0 } : Shadow.lg, style]}>
+      <BlurView intensity={intensity} style={styles.blur} tint="dark" blurMethod="dimezisBlurView" blurTarget={blurTarget || undefined}>
         <View style={[styles.content, noPadding && styles.noPadding]}>
           {children}
         </View>
@@ -41,11 +45,13 @@ const styles = StyleSheet.create({
   },
   blur: {
     flex: 1,
+    overflow: "hidden",
   },
   content: {
     flex: 1,
     padding: 24,
     backgroundColor: "rgba(255, 255, 255, 0.08)",
+    overflow: "hidden",
   },
   noPadding: {
     padding: 0,

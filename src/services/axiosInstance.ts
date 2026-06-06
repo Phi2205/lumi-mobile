@@ -1,10 +1,12 @@
-import axios from 'axios';
 import { secureStorage } from '@/services/secureStore';
+import axios from 'axios';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://api.lumi.vn'; // Cấu hình URL mặc định hoặc từ env
 
+console.log("======================================");
+console.log("API URL configured in client:", API_URL);
+console.log("======================================");
 
-console.log('API_URL', API_URL)
 export const axiosInstance = axios.create({
   baseURL: API_URL,
   timeout: 10000,
@@ -49,66 +51,106 @@ axiosInstance.interceptors.request.use(
 let isRefreshing = false;
 let failedQueue: any[] = [];
 
-const processQueue = (error: any, token: string | null = null) => {
-  failedQueue.forEach((prom) => {
-    if (error) {
-      prom.reject(error);
-    } else {
-      prom.resolve(token);
-    }
+const processQueue = (error: any) => {
+  failedQueue.forEach(prom => {
+    if (error) prom.reject(error);
+    else prom.resolve();
   });
   failedQueue = [];
 };
 
+
 axiosInstance.interceptors.response.use(
-  (response) => response,
+  async (response) => {
+    const url = response.config.url || '';
+    if (url.includes('/auth/login') || url.includes('/auth/verify-otp')) {
+      const setCookieHeader = response.headers['set-cookie'];
+      if (setCookieHeader) {
+        const cookies = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
+        let accessToken = '';
+        let refreshToken = '';
+
+        cookies.forEach(cookie => {
+          const accessMatch = cookie.match(/accessToken=([^;]+)/);
+          if (accessMatch) accessToken = accessMatch[1];
+
+          const refreshMatch = cookie.match(/refreshToken=([^;]+)/);
+          if (refreshMatch) refreshToken = refreshMatch[1];
+        });
+
+        if (accessToken && refreshToken) {
+          await saveTokens(accessToken, refreshToken);
+        }
+      }
+    }
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
     const statusCode = error.response?.status;
-
     // Lỗi 401 Unauthorized và chưa retry
     if (statusCode === 401 && !originalRequest._retry) {
-      if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-          failedQueue.push({ resolve, reject });
-        })
-          .then((token) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-            return axiosInstance(originalRequest);
-          })
-          .catch((err) => Promise.reject(err));
-      }
-
       originalRequest._retry = true;
-      isRefreshing = true;
 
-      try {
-        const refreshToken = await getRefreshToken();
-        if (!refreshToken) {
-          throw new Error('No refresh token available');
-        }
+      // Đẩy cả request đầu tiên này vào queue
+      const retryPromise = new Promise((resolve, reject) => {
+        failedQueue.push({ resolve, reject });
+      })
+        .then(() => axiosInstance(originalRequest))
+        .catch((err) => Promise.reject(err));
 
-        // Gọi API refresh token
-        const response = await axios.post(`${API_URL}/auth/refresh`, {
-          refreshToken,
-        });
+      if (!isRefreshing) {
+        isRefreshing = true;
 
-        const { accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data.data;
-        await saveTokens(newAccessToken, newRefreshToken);
+        // Khởi chạy tiến trình refresh không đồng bộ
+        (async () => {
+          try {
+            const refreshToken = await getRefreshToken();
+            if (!refreshToken) {
+              throw new Error('No refresh token available');
+            }
 
-        axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${newAccessToken}`;
-        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+            const response = await axios.post(
+              `${API_URL}/auth/refresh`,
+              {},
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${refreshToken}`,
+                },
+              }
+            );
 
-        processQueue(null, newAccessToken);
-        isRefreshing = false;
+            const setCookieHeader = response.headers['set-cookie'];
+            if (setCookieHeader) {
+              const cookies = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
+              let newAccessToken = '';
+              let newRefreshToken = '';
 
-        return axiosInstance(originalRequest);
-      } catch (refreshError) {
-        processQueue(refreshError, null);
-        isRefreshing = false;
-        await clearTokens(); // Xóa token cũ
-        return Promise.reject(refreshError);
+              cookies.forEach(cookie => {
+                const accessMatch = cookie.match(/accessToken=([^;]+)/);
+                if (accessMatch) newAccessToken = accessMatch[1];
+
+                const refreshMatch = cookie.match(/refreshToken=([^;]+)/);
+                if (refreshMatch) newRefreshToken = refreshMatch[1];
+              });
+
+              if (newAccessToken && newRefreshToken) {
+                await saveTokens(newAccessToken, newRefreshToken);
+              }
+            }
+
+            processQueue(null);
+            isRefreshing = false;
+          } catch (refreshError) {
+            processQueue(refreshError);
+            isRefreshing = false;
+            await clearTokens(); // Xóa token cũ
+          }
+        })();
       }
+
+      return retryPromise;
     }
 
     // Định dạng lại lỗi nhất quán trước khi trả về UI

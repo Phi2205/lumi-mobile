@@ -159,7 +159,7 @@ export function GlassLoading({
   return (
     <Modal transparent visible={visible} animationType="fade">
       <View style={styles.fullscreenOverlay}>
-        <BlurView intensity={35} tint="dark" style={StyleSheet.absoluteFill}>
+        <BlurView intensity={35} tint="dark" style={StyleSheet.absoluteFill} blurMethod="none">
           <View style={styles.centerContainer}>
             <GlassCard
               variant="default"

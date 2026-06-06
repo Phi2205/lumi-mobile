@@ -11,6 +11,7 @@ import {
   Platform,
 } from "react-native";
 import { BlurView } from "expo-blur";
+import { useBlurTarget } from "@/context/BlurTargetContext";
 import { Colors, BorderRadius, FontSize, FontWeight, Spacing } from "@/constants/theme";
 
 interface GlassInputProps extends Omit<RNTextInputProps, "style"> {
@@ -36,6 +37,7 @@ export function GlassInput({
   ...props
 }: GlassInputProps) {
   const [isFocused, setIsFocused] = useState(false);
+  const blurTarget = useBlurTarget();
 
   const handleFocus = (e: any) => {
     setIsFocused(true);
@@ -100,6 +102,8 @@ export function GlassInput({
           intensity={isFocused ? 30 : 20}
           tint="dark"
           style={[styles.blur, { borderRadius: sizeConfig.borderRadius }]}
+          blurMethod="dimezisBlurView"
+          blurTarget={blurTarget || undefined}
         >
           <View
             style={[

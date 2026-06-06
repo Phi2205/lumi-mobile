@@ -8,8 +8,10 @@ import {
   TextStyle,
   StyleProp,
   View,
+  Platform,
 } from "react-native";
 import { BlurView } from "expo-blur";
+import { useBlurTarget } from "@/context/BlurTargetContext";
 import { LinearGradient } from "expo-linear-gradient";
 import { Colors, BorderRadius, FontSize, FontWeight } from "@/constants/theme";
 
@@ -43,6 +45,7 @@ export function GlassButton({
   iconPosition = "left",
 }: GlassButtonProps) {
   const isDisabled = disabled || loading;
+  const blurTarget = useBlurTarget();
 
   const getSizeStyles = () => {
     switch (size) {
@@ -117,7 +120,7 @@ export function GlassButton({
     shadowOffset: { width: 0, height: Math.ceil(depth) },
     shadowOpacity,
     shadowRadius,
-    elevation,
+    elevation: Platform.OS === "android" ? 0 : elevation,
   };
 
   const renderContent = () => {
@@ -156,6 +159,17 @@ export function GlassButton({
     );
   };
 
+  const content = (
+    <LinearGradient
+      colors={variantConfig.colors as [string, string]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[sizeConfig.container, styles.gradient, { borderRadius: sizeConfig.borderRadius }]}
+    >
+      {renderContent()}
+    </LinearGradient>
+  );
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -170,22 +184,22 @@ export function GlassButton({
         buttonShadowStyle,
         isDisabled && styles.disabled,
         style,
+        { overflow: "hidden" },
       ]}
     >
-      <BlurView
-        intensity={intensity}
-        tint="dark"
-        style={[styles.blurView, { borderRadius: sizeConfig.borderRadius }]}
-      >
-        <LinearGradient
-          colors={variantConfig.colors as [string, string]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[sizeConfig.container, styles.gradient]}
+      {intensity > 0 ? (
+        <BlurView
+          intensity={intensity}
+          tint="dark"
+          style={[styles.blurView, { borderRadius: sizeConfig.borderRadius }]}
+          blurMethod="dimezisBlurView"
+          blurTarget={blurTarget || undefined}
         >
-          {renderContent()}
-        </LinearGradient>
-      </BlurView>
+          {content}
+        </BlurView>
+      ) : (
+        content
+      )}
     </TouchableOpacity>
   );
 }
@@ -198,6 +212,7 @@ const styles = StyleSheet.create({
   },
   blurView: {
     width: "100%",
+    overflow: "hidden",
   },
   gradient: {
     width: "100%",

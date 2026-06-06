@@ -14,3 +14,10 @@
   --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
   --font-serif: Georgia, 'Times New Roman', serif;
 }
+
+/* Ensure all text elements on web default to white to prevent blurry/faint text on dark backgrounds */
+body, html {
+  color: #F2F2F2;
+  font-family: var(--font-display);
+}
+

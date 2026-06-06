@@ -4,7 +4,13 @@ import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { Colors } from "@/constants/theme";
+import { LogBox } from "react-native";
 import "../global.css";
+
+// Suppress duplicate key warnings from showing up on the development screen overlay
+LogBox.ignoreLogs([
+  "Encountered two children with the same key",
+]);
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 

@@ -1,37 +1,44 @@
-import React from "react";
-import {
-  View,
-  StyleSheet,
-  ViewStyle,
-  StyleProp,
-  TouchableOpacity,
-  Pressable,
-  Platform,
-} from "react-native";
+import { BorderRadius, Colors, Shadow } from "@/constants/theme";
 import { BlurView } from "expo-blur";
+import { useBlurTarget } from "@/context/BlurTargetContext";
 import { LinearGradient } from "expo-linear-gradient";
-import { Colors, BorderRadius, Shadow } from "@/constants/theme";
+import React from "react";
+
+// Workaround for React 19 / expo-blur TS2607 type mismatch
+const SafeBlurView = BlurView as any;
+import {
+  Platform,
+  Pressable,
+  StyleProp,
+  StyleSheet,
+  View,
+  ViewStyle
+} from "react-native";
 
 interface GlassCardProps {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
+  className?: string;
   intensity?: number | "light" | "medium" | "strong";
   variant?: "default" | "sm" | "lg" | "light" | "dark" | "elevated";
   interactive?: boolean;
   onPress?: () => void;
   vibrant?: boolean;
   noPadding?: boolean;
+  tint?: "light" | "dark" | "default";
 }
 
 export function GlassCard({
   children,
   style,
+  className,
   intensity = "medium",
   variant = "default",
   interactive = false,
   onPress,
   vibrant = false,
   noPadding = false,
+  tint = "dark",
 }: GlassCardProps) {
   // Convert text intensity to number
   const getIntensityValue = (): number => {
@@ -81,8 +88,15 @@ export function GlassCard({
   const flatStyle = StyleSheet.flatten(style);
   const blurIntensity = getIntensityValue();
   const isPressable = interactive || !!onPress;
-  
-  const cardShadow = variant === "elevated" ? Shadow.lg : Shadow.glass;
+  const blurTarget = useBlurTarget();
+
+  const cardShadow = Platform.select<any>({
+    ios: variant === "elevated" ? Shadow.lg : Shadow.glass,
+    web: variant === "elevated" ? Shadow.lg : Shadow.glass,
+    android: {
+      elevation: 0,
+    },
+  });
   const cardRadius = flatStyle?.borderRadius !== undefined ? flatStyle.borderRadius : BorderRadius.glass;
 
   const renderInner = () => {
@@ -121,6 +135,7 @@ export function GlassCard({
     <CardWrapper
       onPress={onPress}
       disabled={!isPressable}
+      className={className}
       style={({ pressed }: any) => [
         styles.container,
         { borderRadius: cardRadius },
@@ -129,6 +144,7 @@ export function GlassCard({
         style as any,
         flatStyle?.backgroundColor && { backgroundColor: "transparent" },
         { borderWidth: 0 },
+        { overflow: "hidden" },
         Platform.select({
           web: {
             backdropFilter: `blur(${blurIntensity * 0.3}px)`,
@@ -137,9 +153,15 @@ export function GlassCard({
         }),
       ]}
     >
-      <BlurView intensity={blurIntensity} style={[styles.blur, { borderRadius: cardRadius }]} tint="dark">
+      <SafeBlurView
+        intensity={blurIntensity}
+        style={[styles.blur, { borderRadius: cardRadius }]}
+        tint={tint}
+        blurMethod="dimezisBlurView"
+        blurTarget={blurTarget || undefined}
+      >
         {renderInner()}
-      </BlurView>
+      </SafeBlurView>
     </CardWrapper>
   );
 }
@@ -151,12 +173,14 @@ const styles = StyleSheet.create({
   },
   blur: {
     flex: 1,
+    overflow: "hidden",
   },
   content: {
     flex: 1,
     borderWidth: 1,
     borderColor: Colors.glass.lightBorder,
     borderStyle: "solid",
+    overflow: "hidden",
   },
   paddingDefault: {
     padding: 20,

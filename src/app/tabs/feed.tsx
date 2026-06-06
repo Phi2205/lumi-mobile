@@ -1,11 +1,12 @@
 // Force rebuild for text post layout
-import { PostCard } from "@/components/post";
-import { Avatar, GlassCard } from "@/components/ui";
+import { CommentsModal, LikesModal, PostCard } from "@/components/post";
+import { Avatar, GlassButton, GlassCard } from "@/components/ui";
 import { BorderRadius, Colors, FontSize, Spacing } from "@/constants/theme";
 import { useAuthStore } from "@/store";
-import { Ionicons } from "@expo/vector-icons";
-import { useCallback, useEffect, useState } from "react";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
+    Animated,
     Dimensions,
     FlatList,
     RefreshControl,
@@ -22,6 +23,70 @@ import { Post as ApiPost } from "@/types/post.types";
 const { width } = Dimensions.get("window");
 const CARD_WIDTH = width - Spacing.md * 2;
 const IMAGE_WIDTH = CARD_WIDTH - Spacing.md * 2;
+
+const PostCardSkeleton = () => {
+    const pulseAnim = useRef(new Animated.Value(0.3)).current;
+
+    useEffect(() => {
+        const sharedAnimation = Animated.loop(
+            Animated.sequence([
+                Animated.timing(pulseAnim, {
+                    toValue: 0.7,
+                    duration: 1000,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(pulseAnim, {
+                    toValue: 0.3,
+                    duration: 1000,
+                    useNativeDriver: true,
+                }),
+            ])
+        );
+        sharedAnimation.start();
+        return () => sharedAnimation.stop();
+    }, [pulseAnim]);
+
+    return (
+        <Animated.View style={[styles.skeletonCard, { opacity: pulseAnim }]}>
+            {/* Header */}
+            <View style={styles.skeletonHeader}>
+                <View style={styles.skeletonAvatar} />
+                <View style={styles.skeletonHeaderText}>
+                    <View style={styles.skeletonName} />
+                    <View style={styles.skeletonTime} />
+                </View>
+            </View>
+
+            {/* Content */}
+            <View style={styles.skeletonContentLine} />
+            <View style={[styles.skeletonContentLine, { width: '80%' }]} />
+
+            {/* Media Area */}
+            <View style={styles.skeletonMedia} />
+
+            {/* Footer */}
+            <View style={styles.skeletonFooter}>
+                <View style={styles.skeletonFooterButton} />
+                <View style={styles.skeletonFooterButton} />
+                <View style={styles.skeletonFooterButton} />
+            </View>
+        </Animated.View>
+    );
+};
+
+const EmptyFeed = () => {
+    return (
+        <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconContainer}>
+                <MaterialCommunityIcons name="ghost-outline" size={40} color="rgba(255, 255, 255, 0.5)" />
+            </View>
+            <Text style={styles.emptyTitle}>No posts yet</Text>
+            <Text style={styles.emptySubtitle}>
+                Your feed is quiet for now. Add more friends or create a new post to get started!
+            </Text>
+        </View>
+    );
+};
 
 interface Post extends ApiPost {
     isBookmarked?: boolean;
@@ -202,7 +267,14 @@ const mockPosts: Post[] = [
 export default function FeedScreen() {
     const [posts, setPosts] = useState<Post[]>([]);
     const [refreshing, setRefreshing] = useState(false);
-
+    const [isLoading, setIsLoading] = useState(true);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [likesModalVisible, setLikesModalVisible] = useState(false);
+    const [activeLikesPostId, setActiveLikesPostId] = useState<string | null>(null);
+    const [commentsModalVisible, setCommentsModalVisible] = useState(false);
+    const [activeCommentsPostId, setActiveCommentsPostId] = useState<string | null>(null);
+    const [hasMore, setHasMore] = useState(true);
+    const userHasScrolled = useRef(false);
 
     const { user } = useAuthStore();
 
@@ -211,15 +283,40 @@ export default function FeedScreen() {
             const response = await PostService.getFeed();
             if (response.success && response.data) {
                 setPosts(response.data);
+                setHasMore(response.data.length > 0);
             }
         } catch (error) {
             console.error("Failed to fetch feed posts:", error);
+        } finally {
+            setIsLoading(false);
         }
     }, []);
 
     useEffect(() => {
         fetchPosts();
     }, [fetchPosts]);
+
+    const handleLoadMore = async () => {
+        if (isLoadingMore || isLoading || !hasMore || !userHasScrolled.current) return;
+        console.log("onEndReached triggered: Loading more posts...");
+        setIsLoadingMore(true);
+        try {
+            const response = await PostService.getFeed();
+            if (response.success && response.data) {
+                if (response.data.length === 0) {
+                    setHasMore(false);
+                } else {
+                    setPosts((prev) => [...prev, ...response.data]);
+                }
+            } else {
+                setHasMore(false);
+            }
+        } catch (error) {
+            console.error("Failed to fetch feed posts:", error);
+        } finally {
+            setIsLoadingMore(false);
+        }
+    };
 
     const formatTime = (dateString: string) => {
         const date = new Date(dateString);
@@ -255,6 +352,22 @@ export default function FeedScreen() {
                     : post
             )
         );
+
+        PostService.like(postId).catch((error) => {
+            console.error("Failed to like post:", error);
+            // Rollback state if the API fails
+            setPosts((prev) =>
+                prev.map((post) =>
+                    post.id === postId
+                        ? {
+                            ...post,
+                            has_liked: !post.has_liked,
+                            like_count: post.has_liked ? post.like_count - 1 : post.like_count + 1,
+                        }
+                        : post
+                )
+            );
+        });
     };
 
     const handleBookmark = (postId: string) => {
@@ -269,6 +382,8 @@ export default function FeedScreen() {
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
+        userHasScrolled.current = false;
+        setHasMore(true);
         await fetchPosts();
         setRefreshing(false);
     }, [fetchPosts]);
@@ -278,7 +393,7 @@ export default function FeedScreen() {
             <View style={styles.listHeaderContainer}>
                 {/* 1. Stories Island (Glass Island Style) */}
                 <View style={styles.cardContainer}>
-                    <GlassCard noPadding intensity="strong" style={styles.postCard}>
+                    <GlassCard intensity={85} noPadding={true}>
                         <View style={styles.storiesRow}>
                             <TouchableOpacity style={styles.addStoryBtn} activeOpacity={0.8}>
                                 <View style={styles.addStoryBox}>
@@ -296,11 +411,11 @@ export default function FeedScreen() {
 
                 {/* 2. Create Post Card */}
                 <View style={styles.cardContainer}>
-                    <GlassCard noPadding intensity="strong" style={styles.postCard}>
+                    <GlassCard intensity={85} noPadding={true}>
                         <View style={styles.createPostContent}>
                             <View style={styles.createPostRow}>
                                 <Avatar
-                                    source={user?.avatar || undefined}
+                                    source={user?.avatar_url || user?.avatar || undefined}
                                     name={user?.fullName || user?.username}
                                     size="md"
                                 />
@@ -317,9 +432,14 @@ export default function FeedScreen() {
                                     <Ionicons name="image-outline" size={18} color={Colors.text.primary} />
                                     <Text style={styles.createPostActionText}>Ảnh</Text>
                                 </TouchableOpacity>
-                                <TouchableOpacity style={styles.publishPostBtn} activeOpacity={0.8}>
-                                    <Text style={styles.publishPostBtnText}>Đăng</Text>
-                                </TouchableOpacity>
+                                <GlassButton
+                                    variant="primary"
+                                    size="sm"
+                                    intensity={0}
+                                    style={{ borderRadius: 16, width: 80 }}
+                                >
+                                    Đăng
+                                </GlassButton>
                             </View>
                         </View>
                     </GlassCard>
@@ -334,7 +454,24 @@ export default function FeedScreen() {
                 item={item}
                 onLike={handleLike}
                 onBookmark={handleBookmark}
+                onOpenLikes={(postId) => {
+                    setActiveLikesPostId(postId);
+                    setLikesModalVisible(true);
+                }}
+                onComment={(postId) => {
+                    setActiveCommentsPostId(postId);
+                    setCommentsModalVisible(true);
+                }}
             />
+        );
+    };
+
+    const renderFooter = () => {
+        if (!isLoadingMore) return null;
+        return (
+            <View style={{ paddingBottom: Spacing.md }}>
+                <PostCardSkeleton />
+            </View>
         );
     };
 
@@ -364,9 +501,10 @@ export default function FeedScreen() {
 
                 {/* Feed */}
                 <FlatList
-                    data={posts}
-                    renderItem={renderPost}
-                    keyExtractor={(item) => item.id}
+                    style={{ flex: 1 }}
+                    data={isLoading ? ([1, 2, 3] as any) : posts}
+                    renderItem={isLoading ? () => <PostCardSkeleton /> : renderPost}
+                    keyExtractor={(item, index) => isLoading ? `skeleton-${index}` : `${(item as any).id}-${index}`}
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={styles.feedContent}
                     refreshControl={
@@ -377,13 +515,121 @@ export default function FeedScreen() {
                         />
                     }
                     ListHeaderComponent={renderHeaderComponents}
+                    ListEmptyComponent={isLoading ? null : <EmptyFeed />}
+                    onScroll={(event) => {
+                        const y = event.nativeEvent.contentOffset?.y || 0;
+                        if (y > 5 && !userHasScrolled.current) {
+                            console.log("User started scrolling, enabling pagination. Y:", y);
+                            userHasScrolled.current = true;
+                        }
+                    }}
+                    scrollEventThrottle={16}
+                    onEndReached={handleLoadMore}
+                    onEndReachedThreshold={0.5}
+                    ListFooterComponent={renderFooter}
                 />
             </SafeAreaView>
+
+            {activeLikesPostId && (
+                <LikesModal
+                    visible={likesModalVisible}
+                    onClose={() => {
+                        setLikesModalVisible(false);
+                        setActiveLikesPostId(null);
+                    }}
+                    postId={activeLikesPostId}
+                />
+            )}
+
+            <CommentsModal
+                visible={commentsModalVisible}
+                onClose={() => {
+                    setCommentsModalVisible(false);
+                    setActiveCommentsPostId(null);
+                }}
+                postId={activeCommentsPostId || ""}
+                onCommentAdded={() => {
+                    if (activeCommentsPostId) {
+                        setPosts((prev) =>
+                            prev.map((post) =>
+                                post.id === activeCommentsPostId
+                                    ? { ...post, comment_count: (post.comment_count || 0) + 1 }
+                                    : post
+                            )
+                        );
+                    }
+                }}
+            />
         </View>
     );
 }
 
 const styles = StyleSheet.create({
+    skeletonCard: {
+        backgroundColor: "rgba(255, 255, 255, 0.05)",
+        borderRadius: BorderRadius.lg,
+        padding: Spacing.md,
+        marginBottom: Spacing.md,
+        borderWidth: 1,
+        borderColor: "rgba(255, 255, 255, 0.08)",
+        marginHorizontal: Spacing.md,
+    },
+    skeletonHeader: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginBottom: Spacing.md,
+    },
+    skeletonAvatar: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: "rgba(255, 255, 255, 0.1)",
+    },
+    skeletonHeaderText: {
+        marginLeft: Spacing.sm,
+        flex: 1,
+        gap: 6,
+    },
+    skeletonName: {
+        width: 120,
+        height: 14,
+        borderRadius: 4,
+        backgroundColor: "rgba(255, 255, 255, 0.1)",
+    },
+    skeletonTime: {
+        width: 80,
+        height: 10,
+        borderRadius: 4,
+        backgroundColor: "rgba(255, 255, 255, 0.08)",
+    },
+    skeletonContentLine: {
+        height: 14,
+        borderRadius: 4,
+        backgroundColor: "rgba(255, 255, 255, 0.1)",
+        marginBottom: Spacing.sm,
+    },
+    skeletonMedia: {
+        width: '100%',
+        height: 200,
+        borderRadius: BorderRadius.md,
+        backgroundColor: "rgba(255, 255, 255, 0.1)",
+        marginBottom: Spacing.md,
+        marginTop: Spacing.sm,
+    },
+    skeletonFooter: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        borderTopWidth: 1,
+        borderTopColor: "rgba(255, 255, 255, 0.05)",
+        paddingTop: Spacing.sm,
+    },
+    skeletonFooterButton: {
+        width: 60,
+        height: 20,
+        borderRadius: 4,
+        backgroundColor: "rgba(255, 255, 255, 0.08)",
+    },
     container: {
         flex: 1,
     },
@@ -423,13 +669,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: Spacing.md,
         paddingVertical: Spacing.sm,
     },
-    postCard: {
-        backgroundColor: "rgba(255, 255, 255, 0.1)", // Khớp với bg-white/6 của web
-        borderWidth: 1,
-        borderColor: "rgba(255, 255, 255, 0.28)", // Tăng độ đục để viền rõ nét hơn
-        borderRadius: 16,
-        overflow: "hidden",
-    },
+
     storiesRow: {
         flexDirection: "row",
         alignItems: "center",
@@ -469,7 +709,7 @@ const styles = StyleSheet.create({
     },
     noStoriesText: {
         fontSize: FontSize.sm,
-        color: Colors.text.muted,
+        color: Colors.text.secondary,
     },
     createPostContent: {
         padding: Spacing.md,
@@ -519,15 +759,35 @@ const styles = StyleSheet.create({
         fontSize: FontSize.sm,
         fontWeight: "500",
     },
-    publishPostBtn: {
-        backgroundColor: Colors.brand.primary,
+    emptyContainer: {
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: 60,
         paddingHorizontal: Spacing.xl,
-        paddingVertical: Spacing.sm,
-        borderRadius: 16,
     },
-    publishPostBtnText: {
-        color: Colors.dark.background,
-        fontWeight: "600",
+    emptyIconContainer: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: "rgba(255, 255, 255, 0.05)",
+        borderWidth: 1,
+        borderColor: "rgba(255, 255, 255, 0.08)",
+        justifyContent: "center",
+        alignItems: "center",
+        marginBottom: Spacing.lg,
+    },
+    emptyTitle: {
+        fontSize: FontSize.lg,
+        fontWeight: "bold",
+        color: Colors.text.primary,
+        marginBottom: Spacing.sm,
+        textAlign: "center",
+    },
+    emptySubtitle: {
         fontSize: FontSize.sm,
+        color: "rgba(255, 255, 255, 0.6)",
+        textAlign: "center",
+        lineHeight: 20,
+        paddingHorizontal: Spacing.md,
     },
 });

@@ -3,7 +3,7 @@ import { BorderRadius, Colors, FontSize, Spacing } from "@/constants/theme";
 import { Post } from "@/types/post.types";
 import { Ionicons } from "@expo/vector-icons";
 import { useVideoPlayer, VideoView } from "expo-video";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
     Dimensions,
     Image,
@@ -14,6 +14,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { LikesModal } from "./LikesModal";
 
 interface PostVideoPlayerProps {
     source: string;
@@ -29,8 +30,7 @@ function PostVideoPlayer({ source, style, onVideoSize }: PostVideoPlayerProps) {
 
     const player = useVideoPlayer(videoSource, (player) => {
         player.loop = true;
-        player.muted = true; // Mute feed videos by default
-        player.play();
+        player.muted = false; // Unmute feed videos by default
     });
 
     const currentSourceRef = useRef(videoSource);
@@ -41,8 +41,7 @@ function PostVideoPlayer({ source, style, onVideoSize }: PostVideoPlayerProps) {
             currentSourceRef.current = videoSource;
         }
         player.loop = true;
-        player.muted = true;
-        player.play();
+        player.muted = false;
 
         if (Platform.OS === "web") {
             const checkWebVideoSize = () => {
@@ -126,13 +125,59 @@ function PostVideoPlayer({ source, style, onVideoSize }: PostVideoPlayerProps) {
         }
     }, [player, onVideoSize, videoSource]);
 
+    const [isPlaying, setIsPlaying] = useState(player.playing);
+    const [isMuted, setIsMuted] = useState(player.muted);
+
+    useEffect(() => {
+        const playSub = player.addListener("playingChange", (event) => {
+            setIsPlaying(event.isPlaying);
+            console.log(`[Video Event] Trạng thái phát thay đổi -> isPlaying: ${event.isPlaying}`);
+        });
+        const muteSub = player.addListener("mutedChange", (event) => {
+            setIsMuted(event.muted);
+            console.log(`[Video Event] Trạng thái âm thanh thay đổi -> isMuted: ${event.muted}`);
+        });
+        return () => {
+            playSub.remove();
+            muteSub.remove();
+        };
+    }, [player]);
+
+    const togglePlay = () => {
+        if (player.playing) {
+            player.pause();
+        } else {
+            player.play();
+        }
+    };
+
+    const flatStyle = StyleSheet.flatten(style);
+
     return (
-        <VideoView
-            style={style}
-            player={player}
-            allowsPictureInPicture={false}
-            contentFit="contain"
-        />
+        <View style={{ position: "relative", width: flatStyle?.width, height: flatStyle?.height, overflow: "hidden" }}>
+            <VideoView
+                style={flatStyle}
+                player={player}
+                allowsPictureInPicture={false}
+                contentFit="contain"
+                nativeControls={isPlaying} // Chỉ hiển thị thanh điều khiển khi đang phát
+            />
+
+            {/* Click target overlay covering the entire video area (only active when paused) */}
+            {!isPlaying && (
+                <TouchableOpacity
+                    activeOpacity={0.9}
+                    onPress={togglePlay}
+                    style={StyleSheet.absoluteFill}
+                >
+                    <View style={styles.videoOverlay}>
+                        <View style={styles.playButtonCircle}>
+                            <Ionicons name="play" size={28} color="#FFFFFF" style={{ marginLeft: 3 }} />
+                        </View>
+                    </View>
+                </TouchableOpacity>
+            )}
+        </View>
     );
 }
 
@@ -146,6 +191,7 @@ export interface PostCardProps {
     onComment?: (postId: string) => void;
     onShare?: (postId: string) => void;
     onMorePress?: (postId: string) => void;
+    onOpenLikes?: (postId: string) => void;
 }
 
 export function PostCard({
@@ -155,9 +201,21 @@ export function PostCard({
     onComment,
     onShare,
     onMorePress,
+    onOpenLikes,
 }: PostCardProps) {
     const [activeMediaIndex, setActiveMediaIndex] = useState(0);
     const [activeSharedMediaIndex, setActiveSharedMediaIndex] = useState(0);
+
+    // Likes list bottom sheet state
+    const [likesModalVisible, setLikesModalVisible] = useState(false);
+
+    const handleOpenLikesModal = useCallback(() => {
+        if (onOpenLikes) {
+            onOpenLikes(item.id);
+        } else {
+            setLikesModalVisible(true);
+        }
+    }, [onOpenLikes, item.id]);
 
     useEffect(() => {
         if (!item.post_media) return;
@@ -332,7 +390,7 @@ export function PostCard({
 
     return (
         <View style={styles.cardContainer}>
-            <GlassCard noPadding intensity="strong" style={styles.postCard}>
+            <GlassCard intensity="medium" noPadding={true}>
                 {/* Post Header */}
                 <View style={styles.postHeader}>
                     <TouchableOpacity style={styles.postUserInfo}>
@@ -405,10 +463,10 @@ export function PostCard({
                                     pagingEnabled
                                     showsHorizontalScrollIndicator={false}
                                     scrollEventThrottle={16}
-                                    style={{ width: CARD_WIDTH - 1 }}
+                                    style={{ width: CARD_WIDTH }}
                                     onScroll={(e) => {
                                         const offset = e.nativeEvent.contentOffset.x;
-                                        const page = Math.round(offset / (CARD_WIDTH - 1));
+                                        const page = Math.round(offset / (CARD_WIDTH));
                                         setActiveMediaIndex(page);
                                     }}
                                 >
@@ -451,7 +509,13 @@ export function PostCard({
 
                 {/* Stats Row: "X lượt thích" | "Y bình luận" | "Z chia sẻ" */}
                 <View style={styles.statsRow}>
-                    <Text style={styles.statsText}>{formatNumber(item.like_count)} lượt thích</Text>
+                    <TouchableOpacity
+                        style={{ flex: 1 }}
+                        onPress={handleOpenLikesModal}
+                        activeOpacity={0.7}
+                    >
+                        <Text style={styles.statsText}>{formatNumber(item.like_count)} lượt thích</Text>
+                    </TouchableOpacity>
                     <View style={styles.statsDivider} />
                     <Text style={styles.statsText}>{formatNumber(item.comment_count || 0)} bình luận</Text>
                     <View style={styles.statsDivider} />
@@ -499,6 +563,15 @@ export function PostCard({
                     </TouchableOpacity>
                 </View>
             </GlassCard>
+
+            {/* Likes List Modal (Bottom Sheet style) */}
+            {!onOpenLikes && (
+                <LikesModal
+                    visible={likesModalVisible}
+                    onClose={() => setLikesModalVisible(false)}
+                    postId={item.id}
+                />
+            )}
         </View>
     );
 }
@@ -507,13 +580,6 @@ const styles = StyleSheet.create({
     cardContainer: {
         paddingHorizontal: Spacing.md,
         paddingVertical: Spacing.sm
-    },
-    postCard: {
-        backgroundColor: "rgba(255, 255, 255, 0.1)", // Khớp với bg-white/6 của web
-        borderWidth: 1,
-        borderColor: "rgba(255, 255, 255, 0.28)", // Tăng độ đục để viền rõ nét hơn
-        borderRadius: 16,
-        overflow: "hidden",
     },
 
     postHeader: {
@@ -579,11 +645,11 @@ const styles = StyleSheet.create({
         width: CARD_WIDTH,
         height: CARD_WIDTH * 0.6,
         backgroundColor: "transparent",
-        marginBottom: Spacing.md,
+        // marginBottom: Spacing.md,
         overflow: "hidden",
     },
     postImage: {
-        width: CARD_WIDTH - 1,
+        width: CARD_WIDTH,
         height: CARD_WIDTH * 0.6,
     },
     imageIndicator: {
@@ -718,5 +784,21 @@ const styles = StyleSheet.create({
     sharedFooterText: {
         color: Colors.text.muted,
         fontSize: 11,
+    },
+    videoOverlay: {
+        ...StyleSheet.absoluteFill,
+        backgroundColor: "rgba(0, 0, 0, 0.25)",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    playButtonCircle: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: "rgba(255, 255, 255, 0.3)",
+        justifyContent: "center",
+        alignItems: "center",
+        borderWidth: 1,
+        borderColor: "rgba(255, 255, 255, 0.45)",
     },
 });

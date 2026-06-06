@@ -114,7 +114,7 @@ export default function OTPScreen() {
             {/* Back Button */}
             <TouchableOpacity
               style={styles.backButton}
-              onPress={() => router.back()}
+              onPress={() => router.replace("/auth/login")}
             >
               <Ionicons
                 name="arrow-back"

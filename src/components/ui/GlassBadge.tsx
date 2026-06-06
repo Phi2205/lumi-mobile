@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { BlurView } from "expo-blur";
+import { useBlurTarget } from "@/context/BlurTargetContext";
 import { Colors, BorderRadius, FontSize, FontWeight } from "@/constants/theme";
 
 interface GlassBadgeProps {
@@ -62,10 +63,11 @@ export function GlassBadge({
   };
 
   const themeConfig = getStyles();
+  const blurTarget = useBlurTarget();
 
   return (
     <View style={[styles.container, { borderColor: themeConfig.border }, style]}>
-      <BlurView intensity={intensity} tint="dark" style={styles.blur}>
+      <BlurView intensity={intensity} tint="dark" style={styles.blur} blurMethod="dimezisBlurView" blurTarget={blurTarget || undefined}>
         <View style={[styles.innerContainer, { backgroundColor: themeConfig.bg }]}>
           <Text style={[styles.text, { color: themeConfig.text }, textStyle]}>
             {children}
@@ -86,6 +88,7 @@ const styles = StyleSheet.create({
   blur: {
     flexDirection: "row",
     alignItems: "center",
+    overflow: "hidden",
   },
   innerContainer: {
     paddingHorizontal: 10,

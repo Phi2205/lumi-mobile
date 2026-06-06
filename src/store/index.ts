@@ -8,6 +8,7 @@ export interface User {
   username: string;
   email: string;
   avatar?: string;
+  avatar_url?: string;
   fullName?: string;
   bio?: string;
   isOnline?: boolean;

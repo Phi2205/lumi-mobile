@@ -32,3 +32,70 @@ export interface PostResponse {
   message: string;
   data: Post[];
 }
+
+export interface LikeUser {
+  id: string;
+  name: string;
+  avatar_url: string | null;
+  username?: string;
+}
+
+export interface LikeItem {
+  post_id: string;
+  user_id: string;
+  user: LikeUser;
+}
+
+export interface PaginationInfo {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
+
+export interface LikesResponse {
+  success: boolean;
+  message: string;
+  data: {
+    items: LikeItem[];
+    pagination: PaginationInfo;
+  };
+}
+
+export interface CommentUser {
+  id: string;
+  username: string;
+  name: string;
+  avatar_url: string | null;
+}
+
+export interface CommentItem {
+  id: string;
+  post_id: string;
+  user_id: string;
+  content: string;
+  parent_id: string | null;
+  depth: number;
+  created_at: string;
+  user: CommentUser;
+  replies: CommentItem[];
+  has_replies: boolean;
+}
+
+export interface CommentsResponse {
+  success: boolean;
+  message: string;
+  data: {
+    items: CommentItem[];
+    pagination: PaginationInfo;
+  };
+}
+
+export interface CreateCommentResponse {
+  success: boolean;
+  message: string;
+  data: CommentItem;
+}
+

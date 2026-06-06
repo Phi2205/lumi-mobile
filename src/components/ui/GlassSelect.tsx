@@ -12,6 +12,7 @@ import {
   Pressable,
 } from "react-native";
 import { BlurView } from "expo-blur";
+import { useBlurTarget } from "@/context/BlurTargetContext";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors, BorderRadius, FontSize, FontWeight, Spacing } from "@/constants/theme";
 import { GlassCard } from "./GlassCard";
@@ -41,6 +42,7 @@ export function GlassSelect({
   style,
 }: GlassSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const blurTarget = useBlurTarget();
   const selectedOption = options.find((o) => o.value === value);
 
   const handleSelect = (val: string) => {
@@ -57,7 +59,7 @@ export function GlassSelect({
         activeOpacity={0.8}
         style={styles.selectButtonContainer}
       >
-        <BlurView intensity={20} tint="dark" style={styles.selectButtonBlur}>
+        <BlurView intensity={20} tint="dark" style={styles.selectButtonBlur} blurMethod="dimezisBlurView" blurTarget={blurTarget || undefined}>
           <View style={styles.selectButtonContent}>
             <Text
               style={[
@@ -88,7 +90,7 @@ export function GlassSelect({
           style={styles.modalOverlay}
           onPress={() => setIsOpen(false)}
         >
-          <BlurView intensity={35} tint="dark" style={StyleSheet.absoluteFill}>
+          <BlurView intensity={35} tint="dark" style={StyleSheet.absoluteFill} blurMethod="none">
             <View style={styles.modalContentContainer}>
               <GlassCard
                 variant="default"
