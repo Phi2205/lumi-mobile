@@ -79,15 +79,12 @@ export default function OTPScreen() {
     // Simulate API call
     setTimeout(() => {
       if (otpString === "123456") {
-        login(
-          {
-            id: "1",
-            username: "newuser",
-            email: email || "user@example.com",
-            fullName: "New User",
-          },
-          "mock-token"
-        );
+        login({
+          id: "1",
+          username: "newuser",
+          email: email || "user@example.com",
+          fullName: "New User",
+        });
         router.replace("/explore");
       } else {
         setError("Invalid verification code. Try 123456");
@@ -117,7 +114,7 @@ export default function OTPScreen() {
             {/* Back Button */}
             <TouchableOpacity
               style={styles.backButton}
-              onPress={() => router.back()}
+              onPress={() => router.replace("/auth/login")}
             >
               <Ionicons
                 name="arrow-back"

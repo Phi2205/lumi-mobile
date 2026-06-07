@@ -1,650 +1,829 @@
-import React, { useState, useCallback } from "react";
+// Force rebuild for text post layout
+import { CommentsModal, LikesModal, PostCard, CreatePostModal } from "@/components/post";
+import { Avatar, GlassButton, GlassCard } from "@/components/ui";
+import { BorderRadius, Colors, FontSize, Spacing } from "@/constants/theme";
+import { useAuthStore } from "@/store";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  Image,
-  Dimensions,
-  RefreshControl,
-  ScrollView,
+    Animated,
+    Dimensions,
+    FlatList,
+    Platform,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
-import { Avatar } from "@/components/ui";
-import { Colors, Spacing, FontSize, BorderRadius, Shadow } from "@/constants/theme";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { PostService } from "@/services/post.service";
+import { Post as ApiPost } from "@/types/post.types";
 
 const { width } = Dimensions.get("window");
+const CARD_WIDTH = width - Spacing.md * 2;
+const IMAGE_WIDTH = CARD_WIDTH - Spacing.md * 2;
 
-interface Post {
-  id: string;
-  user: {
-    id: string;
-    username: string;
-    avatar: string;
-    isVerified?: boolean;
-  };
-  imageUrls: string[];
-  caption: string;
-  likes: number;
-  comments: number;
-  createdAt: Date;
-  isLiked: boolean;
-  isBookmarked: boolean;
-  location?: string;
+const PostCardSkeleton = () => {
+    const pulseAnim = useRef(new Animated.Value(0.3)).current;
+
+    useEffect(() => {
+        const sharedAnimation = Animated.loop(
+            Animated.sequence([
+                Animated.timing(pulseAnim, {
+                    toValue: 0.7,
+                    duration: 1000,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(pulseAnim, {
+                    toValue: 0.3,
+                    duration: 1000,
+                    useNativeDriver: true,
+                }),
+            ])
+        );
+        sharedAnimation.start();
+        return () => sharedAnimation.stop();
+    }, [pulseAnim]);
+
+    return (
+        <Animated.View style={[styles.skeletonCard, { opacity: pulseAnim }]}>
+            {/* Header */}
+            <View style={styles.skeletonHeader}>
+                <View style={styles.skeletonAvatar} />
+                <View style={styles.skeletonHeaderText}>
+                    <View style={styles.skeletonName} />
+                    <View style={styles.skeletonTime} />
+                </View>
+            </View>
+
+            {/* Content */}
+            <View style={styles.skeletonContentLine} />
+            <View style={[styles.skeletonContentLine, { width: '80%' }]} />
+
+            {/* Media Area */}
+            <View style={styles.skeletonMedia} />
+
+            {/* Footer */}
+            <View style={styles.skeletonFooter}>
+                <View style={styles.skeletonFooterButton} />
+                <View style={styles.skeletonFooterButton} />
+                <View style={styles.skeletonFooterButton} />
+            </View>
+        </Animated.View>
+    );
+};
+
+const EmptyFeed = () => {
+    return (
+        <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconContainer}>
+                <MaterialCommunityIcons name="ghost-outline" size={40} color="rgba(255, 255, 255, 0.5)" />
+            </View>
+            <Text style={styles.emptyTitle}>No posts yet</Text>
+            <Text style={styles.emptySubtitle}>
+                Your feed is quiet for now. Add more friends or create a new post to get started!
+            </Text>
+        </View>
+    );
+};
+
+interface Post extends ApiPost {
+    isBookmarked?: boolean;
 }
 
 interface Story {
-  id: string;
-  user: {
     id: string;
-    username: string;
-    avatar: string;
-  };
-  hasUnseenStory: boolean;
+    user: {
+        id: string;
+        username: string;
+        avatar: string;
+    };
+    hasUnseenStory: boolean;
 }
 
 const mockStories: Story[] = [
-  {
-    id: "my",
-    user: { id: "me", username: "Your Story", avatar: "https://i.pravatar.cc/150?img=8" },
-    hasUnseenStory: false,
-  },
-  {
-    id: "1",
-    user: { id: "1", username: "sarah", avatar: "https://i.pravatar.cc/150?img=1" },
-    hasUnseenStory: true,
-  },
-  {
-    id: "2",
-    user: { id: "2", username: "mike", avatar: "https://i.pravatar.cc/150?img=2" },
-    hasUnseenStory: true,
-  },
-  {
-    id: "3",
-    user: { id: "3", username: "emma", avatar: "https://i.pravatar.cc/150?img=3" },
-    hasUnseenStory: false,
-  },
-  {
-    id: "4",
-    user: { id: "4", username: "john", avatar: "https://i.pravatar.cc/150?img=4" },
-    hasUnseenStory: true,
-  },
-  {
-    id: "5",
-    user: { id: "5", username: "lisa", avatar: "https://i.pravatar.cc/150?img=5" },
-    hasUnseenStory: true,
-  },
+    {
+        id: "my",
+        user: { id: "me", username: "Your Story", avatar: "https://i.pravatar.cc/150?img=8" },
+        hasUnseenStory: false,
+    },
+    {
+        id: "1",
+        user: { id: "1", username: "sarah", avatar: "https://i.pravatar.cc/150?img=1" },
+        hasUnseenStory: true,
+    },
+    {
+        id: "2",
+        user: { id: "2", username: "mike", avatar: "https://i.pravatar.cc/150?img=2" },
+        hasUnseenStory: true,
+    },
+    {
+        id: "3",
+        user: { id: "3", username: "emma", avatar: "https://i.pravatar.cc/150?img=3" },
+        hasUnseenStory: false,
+    },
+    {
+        id: "4",
+        user: { id: "4", username: "john", avatar: "https://i.pravatar.cc/150?img=4" },
+        hasUnseenStory: true,
+    },
+    {
+        id: "5",
+        user: { id: "5", username: "lisa", avatar: "https://i.pravatar.cc/150?img=5" },
+        hasUnseenStory: true,
+    },
 ];
 
 const mockPosts: Post[] = [
-  {
-    id: "1",
-    user: {
-      id: "1",
-      username: "sarah_wilson",
-      avatar: "https://i.pravatar.cc/150?img=1",
-      isVerified: true,
+    {
+        id: "1",
+        user_id: "1",
+        content: "Beautiful sunset at the beach today! Nature never fails to amaze me.",
+        created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+        like_count: 1234,
+        comment_count: 56,
+        share_count: 12,
+        has_liked: false,
+        user: {
+            id: "1",
+            username: "sarah_wilson",
+            name: "Sarah Wilson",
+            avatar_url: "https://i.pravatar.cc/150?img=1",
+            has_story: false,
+        },
+        post_media: [
+            {
+                id: "m1",
+                media_url: "https://picsum.photos/600/600?random=50",
+                media_type: "image",
+                order: 0,
+            }
+        ],
+        original_post: null,
+        isBookmarked: false,
     },
-    imageUrls: ["https://picsum.photos/600/600?random=50"],
-    caption: "Beautiful sunset at the beach today! Nature never fails to amaze me.",
-    likes: 1234,
-    comments: 56,
-    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    isLiked: false,
-    isBookmarked: false,
-    location: "Malibu Beach, CA",
-  },
-  {
-    id: "2",
-    user: {
-      id: "2",
-      username: "mike_adventures",
-      avatar: "https://i.pravatar.cc/150?img=2",
+    {
+        id: "2",
+        user_id: "2",
+        content: "Mountain hiking is the best therapy! Who else agrees?",
+        created_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+        like_count: 892,
+        comment_count: 34,
+        share_count: 5,
+        has_liked: true,
+        user: {
+            id: "2",
+            username: "mike_adventures",
+            name: "Mike Adventures",
+            avatar_url: "https://i.pravatar.cc/150?img=2",
+            has_story: false,
+        },
+        post_media: [
+            {
+                id: "m2",
+                media_url: "https://picsum.photos/600/600?random=51",
+                media_type: "image",
+                order: 0,
+            },
+            {
+                id: "m3",
+                media_url: "https://picsum.photos/600/600?random=52",
+                media_type: "image",
+                order: 1,
+            }
+        ],
+        original_post: null,
+        isBookmarked: true,
     },
-    imageUrls: [
-      "https://picsum.photos/600/600?random=51",
-      "https://picsum.photos/600/600?random=52",
-    ],
-    caption: "Mountain hiking is the best therapy! Who else agrees?",
-    likes: 892,
-    comments: 34,
-    createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000),
-    isLiked: true,
-    isBookmarked: true,
-    location: "Rocky Mountains",
-  },
-  {
-    id: "3",
-    user: {
-      id: "3",
-      username: "foodie_emma",
-      avatar: "https://i.pravatar.cc/150?img=3",
-      isVerified: true,
+    {
+        id: "3",
+        user_id: "3",
+        content: "Homemade pasta from scratch! Recipe coming soon on my blog.",
+        created_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+        like_count: 2567,
+        comment_count: 123,
+        share_count: 22,
+        has_liked: false,
+        user: {
+            id: "3",
+            username: "foodie_emma",
+            name: "Foodie Emma",
+            avatar_url: "https://i.pravatar.cc/150?img=3",
+            has_story: true,
+        },
+        post_media: [
+            {
+                id: "m4",
+                media_url: "https://picsum.photos/600/600?random=53",
+                media_type: "image",
+                order: 0,
+            }
+        ],
+        original_post: null,
+        isBookmarked: false,
     },
-    imageUrls: ["https://picsum.photos/600/600?random=53"],
-    caption: "Homemade pasta from scratch! Recipe coming soon on my blog.",
-    likes: 2567,
-    comments: 123,
-    createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000),
-    isLiked: false,
-    isBookmarked: false,
-  },
-  {
-    id: "4",
-    user: {
-      id: "4",
-      username: "travel_john",
-      avatar: "https://i.pravatar.cc/150?img=4",
+    {
+        id: "4",
+        user_id: "4",
+        content: "Paris is always a good idea. The city of lights never disappoints!",
+        created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+        like_count: 4521,
+        comment_count: 234,
+        share_count: 44,
+        has_liked: false,
+        user: {
+            id: "4",
+            username: "travel_john",
+            name: "Travel John",
+            avatar_url: "https://i.pravatar.cc/150?img=4",
+            has_story: false,
+        },
+        post_media: [
+            {
+                id: "m5",
+                media_url: "https://picsum.photos/600/600?random=54",
+                media_type: "image",
+                order: 0,
+            },
+            {
+                id: "m6",
+                media_url: "https://picsum.photos/600/600?random=55",
+                media_type: "image",
+                order: 1,
+            },
+            {
+                id: "m7",
+                media_url: "https://picsum.photos/600/600?random=56",
+                media_type: "image",
+                order: 2,
+            }
+        ],
+        original_post: null,
+        isBookmarked: false,
     },
-    imageUrls: [
-      "https://picsum.photos/600/600?random=54",
-      "https://picsum.photos/600/600?random=55",
-      "https://picsum.photos/600/600?random=56",
-    ],
-    caption: "Paris is always a good idea. The city of lights never disappoints!",
-    likes: 4521,
-    comments: 234,
-    createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    isLiked: false,
-    isBookmarked: false,
-    location: "Paris, France",
-  },
 ];
 
 export default function FeedScreen() {
-  const [posts, setPosts] = useState(mockPosts);
-  const [refreshing, setRefreshing] = useState(false);
+    const insets = useSafeAreaInsets();
+    const [posts, setPosts] = useState<Post[]>([]);
+    const [refreshing, setRefreshing] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [likesModalVisible, setLikesModalVisible] = useState(false);
+    const [activeLikesPostId, setActiveLikesPostId] = useState<string | null>(null);
+    const [commentsModalVisible, setCommentsModalVisible] = useState(false);
+    const [activeCommentsPostId, setActiveCommentsPostId] = useState<string | null>(null);
+    const [createPostModalVisible, setCreatePostModalVisible] = useState(false);
+    const [hasMore, setHasMore] = useState(true);
+    const userHasScrolled = useRef(false);
 
-  const formatTime = (date: Date) => {
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const hours = Math.floor(diff / 3600000);
-    if (hours < 1) return "Just now";
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    if (days < 7) return `${days}d ago`;
-    return date.toLocaleDateString();
-  };
+    const { user } = useAuthStore();
 
-  const formatNumber = (num: number) => {
-    if (num >= 1000000) {
-      return `${(num / 1000000).toFixed(1)}M`;
-    }
-    if (num >= 1000) {
-      return `${(num / 1000).toFixed(1)}K`;
-    }
-    return num.toString();
-  };
+    const handlePostCreated = useCallback((newPost: Post) => {
+        setPosts((prev) => [newPost, ...prev]);
+    }, []);
 
-  const handleLike = (postId: string) => {
-    setPosts((prev) =>
-      prev.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              isLiked: !post.isLiked,
-              likes: post.isLiked ? post.likes - 1 : post.likes + 1,
+    const fetchPosts = useCallback(async () => {
+        try {
+            const response = await PostService.getFeed();
+            if (response.success && response.data) {
+                setPosts(response.data);
+                setHasMore(response.data.length > 0);
             }
-          : post
-      )
-    );
-  };
+        } catch (error) {
+            console.error("Failed to fetch feed posts:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
 
-  const handleBookmark = (postId: string) => {
-    setPosts((prev) =>
-      prev.map((post) =>
-        post.id === postId
-          ? { ...post, isBookmarked: !post.isBookmarked }
-          : post
-      )
-    );
-  };
+    useEffect(() => {
+        fetchPosts();
+    }, [fetchPosts]);
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1500);
-  }, []);
+    const handleLoadMore = async () => {
+        if (isLoadingMore || isLoading || !hasMore || !userHasScrolled.current) return;
+        console.log("onEndReached triggered: Loading more posts...");
+        setIsLoadingMore(true);
+        try {
+            const response = await PostService.getFeed();
+            if (response.success && response.data) {
+                if (response.data.length === 0) {
+                    setHasMore(false);
+                } else {
+                    setPosts((prev) => [...prev, ...response.data]);
+                }
+            } else {
+                setHasMore(false);
+            }
+        } catch (error) {
+            console.error("Failed to fetch feed posts:", error);
+        } finally {
+            setIsLoadingMore(false);
+        }
+    };
 
-  const renderStory = ({ item, index }: { item: Story; index: number }) => {
-    const isMyStory = item.id === "my";
+    const formatTime = (dateString: string) => {
+        const date = new Date(dateString);
+        const now = new Date();
+        const diff = now.getTime() - date.getTime();
+        const hours = Math.floor(diff / 3600000);
+        if (hours < 1) return "Just now";
+        if (hours < 24) return `${hours}h ago`;
+        const days = Math.floor(hours / 24);
+        if (days < 7) return `${days}d ago`;
+        return date.toLocaleDateString();
+    };
+
+    const formatNumber = (num?: number | null) => {
+        if (num === undefined || num === null) return "0";
+        const val = Number(num);
+        if (isNaN(val)) return "0";
+        if (val >= 1000000) {
+            return `${(val / 1000000).toFixed(1)}M`;
+        }
+        if (val >= 1000) {
+            return `${(val / 1000).toFixed(1)}K`;
+        }
+        return val.toString();
+    };
+
+    const handleLike = (postId: string) => {
+        setPosts((prev) =>
+            prev.map((post) =>
+                post.id === postId
+                    ? {
+                        ...post,
+                        has_liked: !post.has_liked,
+                        like_count: post.has_liked ? post.like_count - 1 : post.like_count + 1,
+                    }
+                    : post
+            )
+        );
+
+        PostService.like(postId).catch((error) => {
+            console.error("Failed to like post:", error);
+            // Rollback state if the API fails
+            setPosts((prev) =>
+                prev.map((post) =>
+                    post.id === postId
+                        ? {
+                            ...post,
+                            has_liked: !post.has_liked,
+                            like_count: post.has_liked ? post.like_count - 1 : post.like_count + 1,
+                        }
+                        : post
+                )
+            );
+        });
+    };
+
+    const handleBookmark = (postId: string) => {
+        setPosts((prev) =>
+            prev.map((post) =>
+                post.id === postId
+                    ? { ...post, isBookmarked: !post.isBookmarked }
+                    : post
+            )
+        );
+    };
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        userHasScrolled.current = false;
+        setHasMore(true);
+        await fetchPosts();
+        setRefreshing(false);
+    }, [fetchPosts]);
+
+    const renderHeaderComponents = () => {
+        return (
+            <View style={styles.listHeaderContainer}>
+                {/* 1. Stories Island (Glass Island Style) */}
+                <View style={styles.cardContainer}>
+                    <GlassCard intensity={85} noPadding={true}>
+                        <View style={styles.storiesRow}>
+                            <TouchableOpacity style={styles.addStoryBtn} activeOpacity={0.8}>
+                                <View style={styles.addStoryBox}>
+                                    <Ionicons name="add" size={28} color={Colors.text.primary} />
+                                    <Text style={styles.addStoryText}>Thêm</Text>
+                                </View>
+                                <Text style={styles.addStoryLabel}>Tin của bạn</Text>
+                            </TouchableOpacity>
+                            <View style={styles.noStoriesContainer}>
+                                <Text style={styles.noStoriesText}>Không có tin nào</Text>
+                            </View>
+                        </View>
+                    </GlassCard>
+                </View>
+
+                {/* 2. Create Post Card */}
+                <View style={styles.cardContainer}>
+                    <GlassCard intensity={85} noPadding={true}>
+                        <View style={styles.createPostContent}>
+                            <View style={styles.createPostRow}>
+                                <Avatar
+                                    source={user?.avatar_url || user?.avatar || undefined}
+                                    name={user?.fullName || user?.username}
+                                    size="md"
+                                />
+                                <TouchableOpacity
+                                    style={styles.createPostInputButton}
+                                    activeOpacity={0.8}
+                                    onPress={() => setCreatePostModalVisible(true)}
+                                >
+                                    <Text style={styles.createPostInputText}>Bạn đang nghĩ gì?</Text>
+                                </TouchableOpacity>
+                            </View>
+                            <View style={styles.createPostDivider} />
+                            <View style={styles.createPostActionsRow}>
+                                <TouchableOpacity
+                                    style={styles.createPostActionButton}
+                                    activeOpacity={0.8}
+                                    onPress={() => setCreatePostModalVisible(true)}
+                                >
+                                    <Ionicons name="image-outline" size={18} color={Colors.text.primary} />
+                                    <Text style={styles.createPostActionText}>Ảnh</Text>
+                                </TouchableOpacity>
+                                <GlassButton
+                                    variant="primary"
+                                    size="sm"
+                                    intensity={0}
+                                    style={{ borderRadius: 16, width: 80 }}
+                                    onPress={() => setCreatePostModalVisible(true)}
+                                >
+                                    Đăng
+                                </GlassButton>
+                            </View>
+                        </View>
+                    </GlassCard>
+                </View>
+            </View>
+        );
+    };
+
+    const renderPost = ({ item }: { item: Post }) => {
+        return (
+            <PostCard
+                item={item}
+                onLike={handleLike}
+                onBookmark={handleBookmark}
+                onOpenLikes={(postId) => {
+                    setActiveLikesPostId(postId);
+                    setLikesModalVisible(true);
+                }}
+                onComment={(postId) => {
+                    setActiveCommentsPostId(postId);
+                    setCommentsModalVisible(true);
+                }}
+            />
+        );
+    };
+
+    const renderFooter = () => {
+        if (!isLoadingMore) return null;
+        return (
+            <View style={{ paddingBottom: Spacing.md }}>
+                <PostCardSkeleton />
+            </View>
+        );
+    };
 
     return (
-      <TouchableOpacity
-        style={[styles.storyItem, index === 0 && styles.storyItemFirst]}
-        onPress={() => {
-          if (isMyStory) {
-            // Open camera or story creation
-          } else {
-            // router.push(`/story/${item.user.id}`);
-          }
-        }}
-        activeOpacity={0.8}
-      >
-        <View
-          style={[
-            styles.storyAvatarContainer,
-            item.hasUnseenStory && styles.storyUnseen,
-            !item.hasUnseenStory && !isMyStory && styles.storySeen,
-          ]}
-        >
-          <Avatar
-            source={item.user.avatar}
-            name={item.user.username}
-            size="lg"
-          />
-          {isMyStory && (
-            <View style={styles.addStoryBadge}>
-              <Ionicons name="add" size={14} color={Colors.text.primary} />
-            </View>
-          )}
-        </View>
-        <Text style={styles.storyUsername} numberOfLines={1}>
-          {item.user.username}
-        </Text>
-      </TouchableOpacity>
-    );
-  };
+        <View style={styles.container}>
+            <SafeAreaView style={styles.safeArea} edges={["top"]}>
+                {/* Header */}
+                <View style={styles.header}>
+                    <Text style={styles.headerTitle}>Lumi</Text>
+                    <View style={styles.headerActions}>
+                        <TouchableOpacity style={styles.headerButton}>
+                            <Ionicons
+                                name="search-outline"
+                                size={22}
+                                color={Colors.text.primary}
+                            />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.headerButton}>
+                            <Ionicons
+                                name="menu-outline"
+                                size={24}
+                                color={Colors.text.primary}
+                            />
+                        </TouchableOpacity>
+                    </View>
+                </View>
 
-  const renderPost = ({ item }: { item: Post }) => (
-    <View style={styles.postContainer}>
-      {/* Post Header */}
-      <View style={styles.postHeader}>
-        <TouchableOpacity
-          style={styles.postUserInfo}
-        //   onPress={() => router.push(`/profile/${item.user.id}`)}
-        >
-          <Avatar
-            source={item.user.avatar}
-            name={item.user.username}
-            size="md"
-          />
-          <View style={styles.postUserText}>
-            <View style={styles.postUsernameRow}>
-              <Text style={styles.postUsername}>{item.user.username}</Text>
-              {item.user.isVerified && (
-                <Ionicons
-                  name="checkmark-circle"
-                  size={14}
-                  color={Colors.brand.primary}
-                  style={styles.verifiedIcon}
+                {/* Feed */}
+                <FlatList
+                    style={{ flex: 1 }}
+                    data={isLoading ? ([1, 2, 3] as any) : posts}
+                    renderItem={isLoading ? () => <PostCardSkeleton /> : renderPost}
+                    keyExtractor={(item, index) => isLoading ? `skeleton-${index}` : `${(item as any).id}-${index}`}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={[
+                        styles.feedContent,
+                        { paddingBottom: Spacing.xl * 2 + (Platform.OS === "ios" ? 88 : 68) + insets.bottom }
+                    ]}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={onRefresh}
+                            tintColor={Colors.brand.primary}
+                        />
+                    }
+                    ListHeaderComponent={renderHeaderComponents}
+                    ListEmptyComponent={isLoading ? null : <EmptyFeed />}
+                    onScroll={(event) => {
+                        const y = event.nativeEvent.contentOffset?.y || 0;
+                        if (y > 5 && !userHasScrolled.current) {
+                            console.log("User started scrolling, enabling pagination. Y:", y);
+                            userHasScrolled.current = true;
+                        }
+                    }}
+                    scrollEventThrottle={16}
+                    onEndReached={handleLoadMore}
+                    onEndReachedThreshold={0.5}
+                    ListFooterComponent={renderFooter}
                 />
-              )}
-            </View>
-            {item.location && (
-              <Text style={styles.postLocation}>{item.location}</Text>
+            </SafeAreaView>
+
+            {activeLikesPostId && (
+                <LikesModal
+                    visible={likesModalVisible}
+                    onClose={() => {
+                        setLikesModalVisible(false);
+                        setActiveLikesPostId(null);
+                    }}
+                    postId={activeLikesPostId}
+                />
             )}
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.postMoreButton}>
-          <Ionicons
-            name="ellipsis-horizontal"
-            size={20}
-            color={Colors.text.primary}
-          />
-        </TouchableOpacity>
-      </View>
 
-      {/* Post Images */}
-      <View style={styles.postImageContainer}>
-        {item.imageUrls.length === 1 ? (
-          <Image
-            source={{ uri: item.imageUrls[0] }}
-            style={styles.postImage}
-            resizeMode="cover"
-          />
-        ) : (
-          <ScrollView
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-          >
-            {item.imageUrls.map((url, index) => (
-              <Image
-                key={index}
-                source={{ uri: url }}
-                style={styles.postImage}
-                resizeMode="cover"
-              />
-            ))}
-          </ScrollView>
-        )}
-        {item.imageUrls.length > 1 && (
-          <View style={styles.imageIndicator}>
-            {item.imageUrls.map((_, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.indicatorDot,
-                  index === 0 && styles.indicatorDotActive,
-                ]}
-              />
-            ))}
-          </View>
-        )}
-      </View>
+            <CommentsModal
+                visible={commentsModalVisible}
+                onClose={() => {
+                    setCommentsModalVisible(false);
+                    setActiveCommentsPostId(null);
+                }}
+                postId={activeCommentsPostId || ""}
+                onCommentAdded={() => {
+                    if (activeCommentsPostId) {
+                        setPosts((prev) =>
+                            prev.map((post) =>
+                                post.id === activeCommentsPostId
+                                    ? { ...post, comment_count: (post.comment_count || 0) + 1 }
+                                    : post
+                            )
+                        );
+                    }
+                }}
+                onCommentDeleted={() => {
+                    if (activeCommentsPostId) {
+                        setPosts((prev) =>
+                            prev.map((post) =>
+                                post.id === activeCommentsPostId
+                                    ? { ...post, comment_count: Math.max(0, (post.comment_count || 0) - 1) }
+                                    : post
+                            )
+                        );
+                    }
+                }}
+            />
 
-      {/* Post Actions */}
-      <View style={styles.postActions}>
-        <View style={styles.postActionsLeft}>
-          <TouchableOpacity
-            style={styles.postActionButton}
-            onPress={() => handleLike(item.id)}
-          >
-            <Ionicons
-              name={item.isLiked ? "heart" : "heart-outline"}
-              size={26}
-              color={item.isLiked ? Colors.status.error : Colors.text.primary}
+            <CreatePostModal
+                visible={createPostModalVisible}
+                onClose={() => setCreatePostModalVisible(false)}
+                onPostCreated={handlePostCreated}
             />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.postActionButton}>
-            <Ionicons
-              name="chatbubble-outline"
-              size={24}
-              color={Colors.text.primary}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.postActionButton}>
-            <Ionicons
-              name="paper-plane-outline"
-              size={24}
-              color={Colors.text.primary}
-            />
-          </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          style={styles.postActionButton}
-          onPress={() => handleBookmark(item.id)}
-        >
-          <Ionicons
-            name={item.isBookmarked ? "bookmark" : "bookmark-outline"}
-            size={24}
-            color={
-              item.isBookmarked ? Colors.brand.primary : Colors.text.primary
-            }
-          />
-        </TouchableOpacity>
-      </View>
-
-      {/* Post Info */}
-      <View style={styles.postInfo}>
-        <Text style={styles.postLikes}>{formatNumber(item.likes)} likes</Text>
-        <View style={styles.postCaptionContainer}>
-          <Text style={styles.postCaption}>
-            <Text style={styles.postCaptionUsername}>{item.user.username}</Text>
-            {"  "}
-            {item.caption}
-          </Text>
-        </View>
-        {item.comments > 0 && (
-          <TouchableOpacity>
-            <Text style={styles.postViewComments}>
-              View all {formatNumber(item.comments)} comments
-            </Text>
-          </TouchableOpacity>
-        )}
-        <Text style={styles.postTime}>{formatTime(item.createdAt)}</Text>
-      </View>
-    </View>
-  );
-
-  return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={[Colors.dark.background, "#252525"]}
-        style={styles.gradient}
-      />
-      <SafeAreaView style={styles.safeArea} edges={["top"]}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Lumi</Text>
-          <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.headerButton}>
-              <Ionicons
-                name="heart-outline"
-                size={26}
-                color={Colors.text.primary}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.headerButton}
-              onPress={() => router.push("/tabs/feed")}
-            >
-              <Ionicons
-                name="chatbubble-outline"
-                size={24}
-                color={Colors.text.primary}
-              />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Feed */}
-        <FlatList
-          data={posts}
-          renderItem={renderPost}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.feedContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={Colors.brand.primary}
-            />
-          }
-          ListHeaderComponent={
-            <FlatList
-              horizontal
-              data={mockStories}
-              renderItem={renderStory}
-              keyExtractor={(item) => item.id}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.storiesList}
-            />
-          }
-        />
-      </SafeAreaView>
-    </View>
-  );
+    );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.dark.background,
-  },
-  gradient: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-  },
-  safeArea: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-  },
-  headerTitle: {
-    fontSize: FontSize["2xl"],
-    fontWeight: "700",
-    color: Colors.brand.primary,
-    fontStyle: "italic",
-  },
-  headerActions: {
-    flexDirection: "row",
-  },
-  headerButton: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  feedContent: {
-    paddingBottom: 100,
-  },
-  storiesList: {
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.glass.lightBorder,
-  },
-  storyItem: {
-    alignItems: "center",
-    marginHorizontal: Spacing.sm,
-    width: 70,
-  },
-  storyItemFirst: {
-    marginLeft: 0,
-  },
-  storyAvatarContainer: {
-    padding: 2,
-    borderRadius: 32,
-  },
-  storyUnseen: {
-    borderWidth: 2,
-    borderColor: Colors.brand.primary,
-  },
-  storySeen: {
-    borderWidth: 2,
-    borderColor: Colors.glass.lightBorder,
-  },
-  storyUsername: {
-    fontSize: FontSize.xs,
-    color: Colors.text.secondary,
-    marginTop: Spacing.xs,
-    textAlign: "center",
-  },
-  addStoryBadge: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: Colors.brand.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: Colors.dark.background,
-  },
-  postContainer: {
-    marginBottom: Spacing.lg,
-  },
-  postHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-  },
-  postUserInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  postUserText: {
-    marginLeft: Spacing.sm,
-    flex: 1,
-  },
-  postUsernameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  postUsername: {
-    fontSize: FontSize.base,
-    fontWeight: "600",
-    color: Colors.text.primary,
-  },
-  verifiedIcon: {
-    marginLeft: Spacing.xs,
-  },
-  postLocation: {
-    fontSize: FontSize.xs,
-    color: Colors.text.muted,
-  },
-  postMoreButton: {
-    padding: Spacing.xs,
-  },
-  postImageContainer: {
-    width: width,
-    height: width,
-    backgroundColor: Colors.dark.card,
-  },
-  postImage: {
-    width: width,
-    height: width,
-  },
-  imageIndicator: {
-    position: "absolute",
-    bottom: Spacing.md,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 4,
-  },
-  indicatorDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.5)",
-  },
-  indicatorDotActive: {
-    backgroundColor: Colors.brand.primary,
-  },
-  postActions: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-  },
-  postActionsLeft: {
-    flexDirection: "row",
-    gap: Spacing.md,
-  },
-  postActionButton: {
-    padding: Spacing.xs,
-  },
-  postInfo: {
-    paddingHorizontal: Spacing.lg,
-  },
-  postLikes: {
-    fontSize: FontSize.sm,
-    fontWeight: "600",
-    color: Colors.text.primary,
-    marginBottom: Spacing.xs,
-  },
-  postCaptionContainer: {
-    marginBottom: Spacing.xs,
-  },
-  postCaption: {
-    fontSize: FontSize.sm,
-    color: Colors.text.primary,
-    lineHeight: 20,
-  },
-  postCaptionUsername: {
-    fontWeight: "600",
-  },
-  postViewComments: {
-    fontSize: FontSize.sm,
-    color: Colors.text.muted,
-    marginBottom: Spacing.xs,
-  },
-  postTime: {
-    fontSize: FontSize.xs,
-    color: Colors.text.muted,
-    textTransform: "uppercase",
-  },
+    skeletonCard: {
+        backgroundColor: "rgba(255, 255, 255, 0.05)",
+        borderRadius: BorderRadius.lg,
+        padding: Spacing.md,
+        marginBottom: Spacing.md,
+        borderWidth: 1,
+        borderColor: "rgba(255, 255, 255, 0.08)",
+        marginHorizontal: Spacing.md,
+    },
+    skeletonHeader: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginBottom: Spacing.md,
+    },
+    skeletonAvatar: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: "rgba(255, 255, 255, 0.1)",
+    },
+    skeletonHeaderText: {
+        marginLeft: Spacing.sm,
+        flex: 1,
+        gap: 6,
+    },
+    skeletonName: {
+        width: 120,
+        height: 14,
+        borderRadius: 4,
+        backgroundColor: "rgba(255, 255, 255, 0.1)",
+    },
+    skeletonTime: {
+        width: 80,
+        height: 10,
+        borderRadius: 4,
+        backgroundColor: "rgba(255, 255, 255, 0.08)",
+    },
+    skeletonContentLine: {
+        height: 14,
+        borderRadius: 4,
+        backgroundColor: "rgba(255, 255, 255, 0.1)",
+        marginBottom: Spacing.sm,
+    },
+    skeletonMedia: {
+        width: '100%',
+        height: 200,
+        borderRadius: BorderRadius.md,
+        backgroundColor: "rgba(255, 255, 255, 0.1)",
+        marginBottom: Spacing.md,
+        marginTop: Spacing.sm,
+    },
+    skeletonFooter: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        borderTopWidth: 1,
+        borderTopColor: "rgba(255, 255, 255, 0.05)",
+        paddingTop: Spacing.sm,
+    },
+    skeletonFooterButton: {
+        width: 60,
+        height: 20,
+        borderRadius: 4,
+        backgroundColor: "rgba(255, 255, 255, 0.08)",
+    },
+    container: {
+        flex: 1,
+    },
+    safeArea: {
+        flex: 1,
+    },
+    feedContent: {
+        paddingBottom: Spacing.xl * 2,
+    },
+    headerTitle: {
+        fontSize: FontSize["2xl"],
+        fontWeight: "bold",
+        fontStyle: "italic",
+        color: Colors.text.primary,
+    },
+    headerActions: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: Spacing.md,
+    },
+    headerButton: {
+        padding: Spacing.xs,
+    },
+    header: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.md,
+        borderBottomWidth: 1,
+        borderBottomColor: "rgba(255, 255, 255, 0.05)",
+    },
+    listHeaderContainer: {
+        paddingTop: Spacing.sm,
+    },
+    cardContainer: {
+        paddingHorizontal: Spacing.md,
+        paddingVertical: Spacing.sm,
+    },
+
+    storiesRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        padding: Spacing.md,
+    },
+    addStoryBtn: {
+        alignItems: "center",
+        marginRight: Spacing.lg,
+    },
+    addStoryBox: {
+        width: 80,
+        height: 100,
+        borderRadius: BorderRadius.md,
+        backgroundColor: "rgba(255, 255, 255, 0.04)",
+        borderWidth: 1,
+        borderColor: "rgba(255, 255, 255, 0.08)",
+        justifyContent: "center",
+        alignItems: "center",
+        marginBottom: Spacing.xs,
+    },
+    addStoryText: {
+        fontSize: FontSize.sm,
+        fontWeight: "600",
+        color: Colors.text.primary,
+        marginTop: Spacing.xs,
+    },
+    addStoryLabel: {
+        fontSize: FontSize.xs,
+        color: Colors.text.secondary,
+        fontWeight: "500",
+    },
+    noStoriesContainer: {
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        height: 100,
+    },
+    noStoriesText: {
+        fontSize: FontSize.sm,
+        color: Colors.text.secondary,
+    },
+    createPostContent: {
+        padding: Spacing.md,
+    },
+    createPostRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: Spacing.md,
+    },
+    createPostInputButton: {
+        flex: 1,
+        height: 40,
+        backgroundColor: "rgba(255, 255, 255, 0.04)",
+        borderRadius: 20,
+        justifyContent: "center",
+        paddingHorizontal: Spacing.md,
+        borderWidth: 1,
+        borderColor: "rgba(255, 255, 255, 0.08)",
+    },
+    createPostInputText: {
+        color: Colors.text.muted,
+        fontSize: FontSize.sm,
+    },
+    createPostDivider: {
+        height: 1,
+        backgroundColor: "rgba(255, 255, 255, 0.08)",
+        marginVertical: Spacing.md,
+    },
+    createPostActionsRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+    },
+    createPostActionButton: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: Spacing.xs,
+        backgroundColor: "rgba(255, 255, 255, 0.04)",
+        paddingHorizontal: Spacing.md,
+        paddingVertical: Spacing.sm,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: "rgba(255, 255, 255, 0.08)",
+    },
+    createPostActionText: {
+        color: Colors.text.primary,
+        fontSize: FontSize.sm,
+        fontWeight: "500",
+    },
+    emptyContainer: {
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: 60,
+        paddingHorizontal: Spacing.xl,
+    },
+    emptyIconContainer: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: "rgba(255, 255, 255, 0.05)",
+        borderWidth: 1,
+        borderColor: "rgba(255, 255, 255, 0.08)",
+        justifyContent: "center",
+        alignItems: "center",
+        marginBottom: Spacing.lg,
+    },
+    emptyTitle: {
+        fontSize: FontSize.lg,
+        fontWeight: "bold",
+        color: Colors.text.primary,
+        marginBottom: Spacing.sm,
+        textAlign: "center",
+    },
+    emptySubtitle: {
+        fontSize: FontSize.sm,
+        color: "rgba(255, 255, 255, 0.6)",
+        textAlign: "center",
+        lineHeight: 20,
+        paddingHorizontal: Spacing.md,
+    },
 });

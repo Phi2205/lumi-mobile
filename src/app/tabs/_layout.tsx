@@ -1,84 +1,89 @@
+// Force rebuild
 import React from "react";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { View, StyleSheet, Platform } from "react-native";
-import { BlurView } from "expo-blur";
-import { Colors, BorderRadius } from "@/constants/theme";
+import { Colors } from "@/constants/theme";
+import { BackgroundWrapper } from "@/components/ui";
 
 export default function TabLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: Colors.brand.primary,
-        tabBarInactiveTintColor: Colors.text.muted,
-        tabBarStyle: styles.tabBar,
-        tabBarBackground: () => (
-          <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill}>
+    <BackgroundWrapper>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: Colors.brand.primary,
+          tabBarInactiveTintColor: Colors.text.muted,
+          tabBarStyle: styles.tabBar,
+          tabBarBackground: () => (
             <View style={styles.tabBarBackground} />
-          </BlurView>
-        ),
-        tabBarShowLabel: true,
-        tabBarLabelStyle: styles.tabBarLabel,
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Chats",
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? "chatbubbles" : "chatbubbles-outline"}
-              size={size}
-              color={color}
-            />
           ),
+          tabBarShowLabel: true,
+          tabBarLabelStyle: styles.tabBarLabel,
+          sceneStyle: { backgroundColor: "transparent" },
         }}
-      />
-      <Tabs.Screen
-        name="feed"
-        options={{
-          title: "Feed",
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? "home" : "home-outline"}
-              size={size}
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="reels"
-        options={{
-          title: "Reels",
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? "play-circle" : "play-circle-outline"}
-              size={size}
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: "Profile",
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? "person" : "person-outline"}
-              size={size}
-              color={color}
-            />
-          ),
-        }}
-      />
-    </Tabs>
+      >
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: "Chats",
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons
+                name={focused ? "chatbubbles" : "chatbubbles-outline"}
+                size={size}
+                color={color}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="feed"
+          options={{
+            title: "Feed",
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons
+                name={focused ? "home" : "home-outline"}
+                size={size}
+                color={color}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="reels"
+          options={{
+            title: "Reels",
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons
+                name={focused ? "play-circle" : "play-circle-outline"}
+                size={size}
+                color={color}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: "Profile",
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons
+                name={focused ? "person" : "person-outline"}
+                size={size}
+                color={color}
+              />
+            ),
+          }}
+        />
+      </Tabs>
+    </BackgroundWrapper>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   tabBar: {
     position: "absolute",
     borderTopWidth: 0,

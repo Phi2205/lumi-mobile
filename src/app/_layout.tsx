@@ -4,7 +4,13 @@ import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { Colors } from "@/constants/theme";
+import { LogBox } from "react-native";
 import "../global.css";
+
+// Suppress duplicate key warnings from showing up on the development screen overlay
+LogBox.ignoreLogs([
+  "Encountered two children with the same key",
+]);
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -33,8 +39,10 @@ export default function RootLayout() {
           animation: "slide_from_right",
         }}
       >
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="auth" options={{ headerShown: false }} />
+        <Stack.Screen name="tabs" options={{ headerShown: false }} />
+        {/* Comment out non-existent routes to prevent warnings. 
+            Uncomment them once the files/folders are created.
         <Stack.Screen
           name="chat/[id]"
           options={{
@@ -57,6 +65,7 @@ export default function RootLayout() {
             animation: "slide_from_right",
           }}
         />
+        */}
       </Stack>
     </>
   );

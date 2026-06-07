@@ -1,5 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;500;600;700&display=swap');
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   --font-dancing-script: 'Dancing Script', cursive;
   --font-display:
@@ -10,3 +14,10 @@
   --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
   --font-serif: Georgia, 'Times New Roman', serif;
 }
+
+/* Ensure all text elements on web default to white to prevent blurry/faint text on dark backgrounds */
+body, html {
+  color: #F2F2F2;
+  font-family: var(--font-display);
+}
+
