@@ -122,8 +122,16 @@ export const PostService = {
         const response = await axiosInstance.get<CommentsResponse>(`/posts/${postId}/comments?page=${page}&limit=${limit}`);
         return response.data;
     },
+    async getCommentReplies(postId: string, commentId: string, page: number = 1, limit: number = 10): Promise<CommentsResponse> {
+        const response = await axiosInstance.get<CommentsResponse>(`/posts/${postId}/comments/${commentId}/replies?page=${page}&limit=${limit}`);
+        return response.data;
+    },
     async createComment(postId: string, content: string, parentId?: string): Promise<CreateCommentResponse> {
         const response = await axiosInstance.post<CreateCommentResponse>(`/posts/${postId}/comments`, { content, parentId });
         return response.data;
-    }
+    },
+    async deleteComment(postId: string, commentId: string): Promise<void> {
+        await axiosInstance.delete(`/posts/${postId}/comments/${commentId}`);
+    },
+    
 };  

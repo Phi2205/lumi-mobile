@@ -5,9 +5,11 @@ import { PostService } from "@/services/post.service";
 import { CommentItem } from "@/types/post.types";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
+import { useAuthStore } from "@/store";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
+    Alert,
     Animated,
     Dimensions,
     FlatList,
@@ -22,60 +24,18 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { CommentItemComponent, CommentsSkeleton } from "./CommentItem";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
-const CommentItemSkeleton = ({ pulseAnim }: { pulseAnim: Animated.Value }) => {
-    return (
-        <Animated.View style={[styles.commentItemCard, { opacity: pulseAnim }]}>
-            <View style={styles.skeletonAvatar} />
-            <View style={styles.commentContentContainer}>
-                <View style={styles.skeletonBubble}>
-                    <View style={styles.skeletonName} />
-                    <View style={styles.skeletonText} />
-                </View>
-                <View style={styles.skeletonActions} />
-            </View>
-        </Animated.View>
-    );
-};
 
-const CommentsSkeleton = () => {
-    const pulseAnim = useRef(new Animated.Value(0.3)).current;
-
-    useEffect(() => {
-        const anim = Animated.loop(
-            Animated.sequence([
-                Animated.timing(pulseAnim, {
-                    toValue: 0.7,
-                    duration: 1000,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(pulseAnim, {
-                    toValue: 0.3,
-                    duration: 1000,
-                    useNativeDriver: true,
-                }),
-            ])
-        );
-        anim.start();
-        return () => anim.stop();
-    }, [pulseAnim]);
-
-    return (
-        <View style={styles.commentsListContent}>
-            {[1, 2, 3, 4].map((index) => (
-                <CommentItemSkeleton key={index} pulseAnim={pulseAnim} />
-            ))}
-        </View>
-    );
-};
 
 interface CommentsModalProps {
     visible: boolean;
     onClose: () => void;
     postId: string;
     onCommentAdded?: () => void;
+    onCommentDeleted?: () => void;
 }
 
 export const insertCommentToTree = (
@@ -127,9 +87,68 @@ export const removeCommentFromTree = (
         }))
 }
 
+export const findCommentInTree = (
+    comments: CommentItem[],
+    commentId: string
+): CommentItem | undefined => {
+    for (const comment of comments) {
+        if (comment.id === commentId) return comment;
+        if (comment.replies && comment.replies.length > 0) {
+            const found = findCommentInTree(comment.replies, commentId);
+            if (found) return found;
+        }
+    }
+    return undefined;
+};
+
+export const updateCommentRepliesInTree = (
+    comments: CommentItem[],
+    commentId: string,
+    replies: CommentItem[]
+): CommentItem[] => {
+    return comments.map((comment) => {
+        if (comment.id === commentId) {
+            return { ...comment, replies };
+        }
+        if (comment.replies && comment.replies.length > 0) {
+            return {
+                ...comment,
+                replies: updateCommentRepliesInTree(comment.replies, commentId, replies),
+            };
+        }
+        return comment;
+    });
+};
+
+export const appendCommentRepliesInTree = (
+    comments: CommentItem[],
+    commentId: string,
+    newReplies: CommentItem[]
+): CommentItem[] => {
+    return comments.map((comment) => {
+        if (comment.id === commentId) {
+            const existingReplies = comment.replies || [];
+            const existingReplyIds = new Set(existingReplies.map((r) => r.id));
+            const uniqueNewReplies = newReplies.filter((r) => !existingReplyIds.has(r.id));
+            return {
+                ...comment,
+                replies: [...existingReplies, ...uniqueNewReplies],
+            };
+        }
+        if (comment.replies && comment.replies.length > 0) {
+            return {
+                ...comment,
+                replies: appendCommentRepliesInTree(comment.replies, commentId, newReplies),
+            };
+        }
+        return comment;
+    });
+};
 
 
-export function CommentsModal({ visible, onClose, postId, onCommentAdded }: CommentsModalProps) {
+
+export function CommentsModal({ visible, onClose, postId, onCommentAdded, onCommentDeleted }: CommentsModalProps) {
+    const { user: currentUser } = useAuthStore();
     const [commentsList, setCommentsList] = useState<CommentItem[]>([]);
     const [commentsPage, setCommentsPage] = useState(1);
     const [isLoadingComments, setIsLoadingComments] = useState(false);
@@ -152,6 +171,19 @@ export function CommentsModal({ visible, onClose, postId, onCommentAdded }: Comm
         setCommentsList((prev) => removeCommentFromTree(prev, data.comment_id));
     }, []);
     useCommentRealtime(postId, handleReceive, handleDelete);
+
+    const handleDeleteComment = async (commentId: string) => {
+        try {
+            setCommentsList((prev) => removeCommentFromTree(prev, commentId));
+            await PostService.deleteComment(postId, commentId);
+            if (onCommentDeleted) {
+                onCommentDeleted();
+            }
+        } catch (error) {
+            console.error("Failed to delete comment:", error);
+            Alert.alert("Lỗi", "Không thể xóa bình luận. Vui lòng thử lại sau.");
+        }
+    };
 
     const fetchComments = useCallback(async (page: number, shouldAppend: boolean = false) => {
         if (page === 1) {
@@ -232,49 +264,14 @@ export function CommentsModal({ visible, onClose, postId, onCommentAdded }: Comm
         }
     };
 
-    const handleReplyTo = (comment: CommentItem) => {
+    const handleReplyTo = (comment: CommentItem | null) => {
         setReplyingTo(comment);
-        inputRef.current?.focus();
+        if (comment) {
+            inputRef.current?.focus();
+        }
     };
 
-    const formatTime = (dateString: string) => {
-        const date = new Date(dateString);
-        const now = new Date();
-        const diff = now.getTime() - date.getTime();
-        const hours = Math.floor(diff / 3600000);
-        if (hours < 1) return "Vừa xong";
-        if (hours < 24) return `${hours}h trước`;
-        const days = Math.floor(hours / 24);
-        if (days < 7) return `${days} ngày trước`;
-        return date.toLocaleDateString("vi-VN");
-    };
 
-    const renderCommentItem = useCallback(({ item }: { item: CommentItem }) => {
-        const user = item.user;
-        return (
-            <View style={[styles.commentItemCard, item.parent_id ? styles.replyItemCard : null]}>
-                <Avatar
-                    size={item.parent_id ? "sm" : "md"}
-                    source={user.avatar_url || undefined}
-                    name={user.name}
-                />
-                <View style={styles.commentContentContainer}>
-                    <View style={styles.commentBubble}>
-                        <Text style={styles.commentName}>{user.name || "User"}</Text>
-                        <Text style={styles.commentTextContent}>{item.content}</Text>
-                    </View>
-                    <View style={styles.commentActions}>
-                        <Text style={styles.commentTime}>{formatTime(item.created_at)}</Text>
-                        {!item.parent_id && (
-                            <TouchableOpacity onPress={() => handleReplyTo(item)} style={styles.actionBtn}>
-                                <Text style={styles.actionBtnText}>Trả lời</Text>
-                            </TouchableOpacity>
-                        )}
-                    </View>
-                </View>
-            </View>
-        );
-    }, []);
 
     return (
         <Modal
@@ -287,12 +284,16 @@ export function CommentsModal({ visible, onClose, postId, onCommentAdded }: Comm
                 style={styles.keyboardAvoidingView}
                 behavior={Platform.OS === "ios" ? "padding" : undefined}
             >
-                <Pressable style={styles.modalOverlay} onPress={onClose}>
+                <View style={styles.modalOverlay}>
+                    {/* Backdrop handler */}
+                    <Pressable
+                        style={StyleSheet.absoluteFill}
+                        onPress={onClose}
+                    />
+                    
+                    {/* Modal Content */}
                     <View style={styles.modalContentContainer}>
-                        <Pressable
-                            style={styles.modalContainer}
-                            onPress={() => { }} // Block backdrop press from bubbling
-                        >
+                        <View style={styles.modalContainer}>
                             <BlurView intensity={75} tint="dark" style={StyleSheet.absoluteFill} blurMethod="none" />
 
                             <View style={{ flex: 1, zIndex: 1 }}>
@@ -319,7 +320,21 @@ export function CommentsModal({ visible, onClose, postId, onCommentAdded }: Comm
                                 ) : (
                                     <FlatList
                                         data={commentsList}
-                                        renderItem={renderCommentItem}
+                                        renderItem={({ item }) => (
+                                            <CommentItemComponent
+                                                item={item}
+                                                postId={postId}
+                                                onReply={handleReplyTo}
+                                                replyingTo={replyingTo}
+                                                commentText={commentText}
+                                                setCommentText={setCommentText}
+                                                onSendComment={handleSendComment}
+                                                isSubmitting={isSubmitting}
+                                                currentUser={currentUser}
+                                                setCommentsList={setCommentsList}
+                                                onDeleteComment={handleDeleteComment}
+                                            />
+                                        )}
                                         keyExtractor={(item) => item.id}
                                         style={{ flex: 1 }}
                                         contentContainerStyle={styles.commentsListContent}
@@ -336,48 +351,40 @@ export function CommentsModal({ visible, onClose, postId, onCommentAdded }: Comm
                                 )}
 
                                 {/* Input Bar */}
-                                <View style={styles.inputArea}>
-                                    {replyingTo && (
-                                        <View style={styles.replyingBar}>
-                                            <Text style={styles.replyingText}>
-                                                Đang trả lời <Text style={{ fontWeight: "bold" }}>@{replyingTo.user.username || replyingTo.user.name}</Text>
-                                            </Text>
-                                            <TouchableOpacity onPress={() => setReplyingTo(null)}>
-                                                <Ionicons name="close-circle" size={16} color={Colors.text.muted} />
+                                {!replyingTo && (
+                                    <View style={styles.inputArea}>
+                                        <View style={styles.inputRow}>
+                                            <TextInput
+                                                ref={inputRef}
+                                                style={styles.textInput}
+                                                placeholder="Viết bình luận..."
+                                                placeholderTextColor={Colors.text.muted}
+                                                value={commentText}
+                                                onChangeText={setCommentText}
+                                                multiline
+                                                maxLength={500}
+                                            />
+                                            <TouchableOpacity
+                                                style={[
+                                                    styles.sendButton,
+                                                    !commentText.trim() || isSubmitting ? styles.sendButtonDisabled : null
+                                                ]}
+                                                onPress={handleSendComment}
+                                                disabled={!commentText.trim() || isSubmitting}
+                                            >
+                                                {isSubmitting ? (
+                                                    <ActivityIndicator size="small" color="#FFFFFF" />
+                                                ) : (
+                                                    <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
+                                                )}
                                             </TouchableOpacity>
                                         </View>
-                                    )}
-                                    <View style={styles.inputRow}>
-                                        <TextInput
-                                            ref={inputRef}
-                                            style={styles.textInput}
-                                            placeholder="Viết bình luận..."
-                                            placeholderTextColor={Colors.text.muted}
-                                            value={commentText}
-                                            onChangeText={setCommentText}
-                                            multiline
-                                            maxLength={500}
-                                        />
-                                        <TouchableOpacity
-                                            style={[
-                                                styles.sendButton,
-                                                !commentText.trim() || isSubmitting ? styles.sendButtonDisabled : null
-                                            ]}
-                                            onPress={handleSendComment}
-                                            disabled={!commentText.trim() || isSubmitting}
-                                        >
-                                            {isSubmitting ? (
-                                                <ActivityIndicator size="small" color="#FFFFFF" />
-                                            ) : (
-                                                <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
-                                            )}
-                                        </TouchableOpacity>
                                     </View>
-                                </View>
+                                )}
                             </View>
-                        </Pressable>
+                        </View>
                     </View>
-                </Pressable>
+                </View>
             </KeyboardAvoidingView>
         </Modal>
     );
@@ -459,59 +466,6 @@ const styles = StyleSheet.create({
         paddingVertical: Spacing.md,
         alignItems: "center",
     },
-    commentItemCard: {
-        flexDirection: "row",
-        alignItems: "flex-start",
-        marginBottom: Spacing.md,
-        gap: Spacing.sm,
-    },
-    replyItemCard: {
-        paddingLeft: Spacing.xl + Spacing.sm,
-    },
-    commentContentContainer: {
-        flex: 1,
-        gap: 4,
-    },
-    commentBubble: {
-        alignSelf: "flex-start",
-        maxWidth: "100%",
-        backgroundColor: "rgba(255, 255, 255, 0.06)",
-        borderWidth: 1,
-        borderColor: "rgba(255, 255, 255, 0.08)",
-        borderRadius: BorderRadius.md,
-        paddingHorizontal: Spacing.md,
-        paddingVertical: Spacing.sm,
-    },
-    commentName: {
-        color: Colors.text.primary,
-        fontSize: FontSize.sm,
-        fontWeight: "bold",
-        marginBottom: 2,
-    },
-    commentTextContent: {
-        color: Colors.text.primary,
-        fontSize: FontSize.sm,
-        lineHeight: 18,
-    },
-    commentActions: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: Spacing.md,
-        paddingLeft: Spacing.xs,
-    },
-    commentTime: {
-        color: Colors.text.muted,
-        fontSize: FontSize.xs,
-    },
-    actionBtn: {
-        paddingVertical: 2,
-        paddingHorizontal: 4,
-    },
-    actionBtnText: {
-        color: Colors.text.secondary,
-        fontSize: FontSize.xs,
-        fontWeight: "600",
-    },
     inputArea: {
         paddingHorizontal: Spacing.md,
         paddingVertical: Spacing.sm,
@@ -562,37 +516,5 @@ const styles = StyleSheet.create({
     },
     sendButtonDisabled: {
         backgroundColor: "rgba(255, 255, 255, 0.15)",
-    },
-    skeletonAvatar: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: "rgba(255, 255, 255, 0.1)",
-    },
-    skeletonBubble: {
-        backgroundColor: "rgba(255, 255, 255, 0.05)",
-        borderRadius: BorderRadius.md,
-        padding: Spacing.sm,
-        gap: 6,
-        width: "80%",
-    },
-    skeletonName: {
-        width: 100,
-        height: 12,
-        borderRadius: 3,
-        backgroundColor: "rgba(255, 255, 255, 0.1)",
-    },
-    skeletonText: {
-        width: "100%",
-        height: 16,
-        borderRadius: 3,
-        backgroundColor: "rgba(255, 255, 255, 0.07)",
-    },
-    skeletonActions: {
-        width: 80,
-        height: 8,
-        borderRadius: 2,
-        backgroundColor: "rgba(255, 255, 255, 0.05)",
-        marginTop: 4,
     },
 });

@@ -9,13 +9,14 @@ import {
     Animated,
     Dimensions,
     FlatList,
+    Platform,
     RefreshControl,
     StyleSheet,
     Text,
     TouchableOpacity,
     View
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PostService } from "@/services/post.service";
 import { Post as ApiPost } from "@/types/post.types";
@@ -265,6 +266,7 @@ const mockPosts: Post[] = [
 ];
 
 export default function FeedScreen() {
+    const insets = useSafeAreaInsets();
     const [posts, setPosts] = useState<Post[]>([]);
     const [refreshing, setRefreshing] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
@@ -506,7 +508,10 @@ export default function FeedScreen() {
                     renderItem={isLoading ? () => <PostCardSkeleton /> : renderPost}
                     keyExtractor={(item, index) => isLoading ? `skeleton-${index}` : `${(item as any).id}-${index}`}
                     showsVerticalScrollIndicator={false}
-                    contentContainerStyle={styles.feedContent}
+                    contentContainerStyle={[
+                        styles.feedContent,
+                        { paddingBottom: Spacing.xl * 2 + (Platform.OS === "ios" ? 88 : 68) + insets.bottom }
+                    ]}
                     refreshControl={
                         <RefreshControl
                             refreshing={refreshing}
@@ -554,6 +559,17 @@ export default function FeedScreen() {
                             prev.map((post) =>
                                 post.id === activeCommentsPostId
                                     ? { ...post, comment_count: (post.comment_count || 0) + 1 }
+                                    : post
+                            )
+                        );
+                    }
+                }}
+                onCommentDeleted={() => {
+                    if (activeCommentsPostId) {
+                        setPosts((prev) =>
+                            prev.map((post) =>
+                                post.id === activeCommentsPostId
+                                    ? { ...post, comment_count: Math.max(0, (post.comment_count || 0) - 1) }
                                     : post
                             )
                         );
