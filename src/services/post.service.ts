@@ -1,5 +1,6 @@
 import { PostResponse, LikesResponse, CommentsResponse, CreateCommentResponse } from "@/types/post.types";
 import { axiosInstance } from "./axiosInstance";
+import { ImagePickerAsset } from "expo-image-picker";
 
 // function mockdataLike(page: number, limit: number): LikesResponse {
 //     const allUsers = Array.from({ length: 100 }, (_, i) => {
@@ -133,5 +134,48 @@ export const PostService = {
     async deleteComment(postId: string, commentId: string): Promise<void> {
         await axiosInstance.delete(`/posts/${postId}/comments/${commentId}`);
     },
-    
+    async createPost(content?: string, mediaFiles?: ImagePickerAsset[]): Promise<any> {
+        const formData = new FormData();
+
+        // Text content
+        formData.append("content", content || "");
+
+        // Files: backend expects multiple "files" fields
+        if (mediaFiles && mediaFiles.length > 0) {
+            mediaFiles.forEach((file, index) => {
+                const uri = file.uri;
+                const cleanUri = uri.split("?")[0].split("#")[0];
+                let extension = cleanUri.split(".").pop()?.toLowerCase() || "jpg";
+                
+                const isVideo = file.type === "video" || file.mimeType?.startsWith("video") || extension === "mp4";
+                const allowedImageExts = ["jpg", "jpeg", "png", "webp"];
+                const allowedVideoExts = ["mp4", "webm"];
+                
+                if (isVideo) {
+                    if (!allowedVideoExts.includes(extension)) {
+                        extension = "mp4";
+                    }
+                } else {
+                    if (!allowedImageExts.includes(extension)) {
+                        extension = "jpg";
+                    }
+                }
+
+                const type = file.mimeType || (isVideo ? "video/mp4" : "image/jpeg");
+                formData.append("files", {
+                    uri,
+                    name: file.fileName || `file_${index}.${extension}`,
+                    type,
+                } as any);
+            });
+        }
+
+        const response = await axiosInstance.post("/posts", formData, {
+            headers: {
+                "Content-Type": "multipart/form-data",
+            },
+            timeout: 60000, // 60 seconds timeout for uploads
+        });
+        return response.data;
+    },
 };  

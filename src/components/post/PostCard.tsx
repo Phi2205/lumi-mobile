@@ -267,14 +267,17 @@ export function PostCard({
         return date.toLocaleDateString();
     };
 
-    const formatNumber = (num: number) => {
-        if (num >= 1000000) {
-            return `${(num / 1000000).toFixed(1)}M`;
+    const formatNumber = (num?: number | null) => {
+        if (num === undefined || num === null) return "0";
+        const val = Number(num);
+        if (isNaN(val)) return "0";
+        if (val >= 1000000) {
+            return `${(val / 1000000).toFixed(1)}M`;
         }
-        if (num >= 1000) {
-            return `${(num / 1000).toFixed(1)}K`;
+        if (val >= 1000) {
+            return `${(val / 1000).toFixed(1)}K`;
         }
-        return num.toString();
+        return val.toString();
     };
 
     const renderSharedPostPreview = (originalPost: Post) => {

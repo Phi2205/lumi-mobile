@@ -1,5 +1,5 @@
 // Force rebuild for text post layout
-import { CommentsModal, LikesModal, PostCard } from "@/components/post";
+import { CommentsModal, LikesModal, PostCard, CreatePostModal } from "@/components/post";
 import { Avatar, GlassButton, GlassCard } from "@/components/ui";
 import { BorderRadius, Colors, FontSize, Spacing } from "@/constants/theme";
 import { useAuthStore } from "@/store";
@@ -275,10 +275,15 @@ export default function FeedScreen() {
     const [activeLikesPostId, setActiveLikesPostId] = useState<string | null>(null);
     const [commentsModalVisible, setCommentsModalVisible] = useState(false);
     const [activeCommentsPostId, setActiveCommentsPostId] = useState<string | null>(null);
+    const [createPostModalVisible, setCreatePostModalVisible] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const userHasScrolled = useRef(false);
 
     const { user } = useAuthStore();
+
+    const handlePostCreated = useCallback((newPost: Post) => {
+        setPosts((prev) => [newPost, ...prev]);
+    }, []);
 
     const fetchPosts = useCallback(async () => {
         try {
@@ -332,14 +337,17 @@ export default function FeedScreen() {
         return date.toLocaleDateString();
     };
 
-    const formatNumber = (num: number) => {
-        if (num >= 1000000) {
-            return `${(num / 1000000).toFixed(1)}M`;
+    const formatNumber = (num?: number | null) => {
+        if (num === undefined || num === null) return "0";
+        const val = Number(num);
+        if (isNaN(val)) return "0";
+        if (val >= 1000000) {
+            return `${(val / 1000000).toFixed(1)}M`;
         }
-        if (num >= 1000) {
-            return `${(num / 1000).toFixed(1)}K`;
+        if (val >= 1000) {
+            return `${(val / 1000).toFixed(1)}K`;
         }
-        return num.toString();
+        return val.toString();
     };
 
     const handleLike = (postId: string) => {
@@ -424,13 +432,18 @@ export default function FeedScreen() {
                                 <TouchableOpacity
                                     style={styles.createPostInputButton}
                                     activeOpacity={0.8}
+                                    onPress={() => setCreatePostModalVisible(true)}
                                 >
                                     <Text style={styles.createPostInputText}>Bạn đang nghĩ gì?</Text>
                                 </TouchableOpacity>
                             </View>
                             <View style={styles.createPostDivider} />
                             <View style={styles.createPostActionsRow}>
-                                <TouchableOpacity style={styles.createPostActionButton} activeOpacity={0.8}>
+                                <TouchableOpacity
+                                    style={styles.createPostActionButton}
+                                    activeOpacity={0.8}
+                                    onPress={() => setCreatePostModalVisible(true)}
+                                >
                                     <Ionicons name="image-outline" size={18} color={Colors.text.primary} />
                                     <Text style={styles.createPostActionText}>Ảnh</Text>
                                 </TouchableOpacity>
@@ -439,6 +452,7 @@ export default function FeedScreen() {
                                     size="sm"
                                     intensity={0}
                                     style={{ borderRadius: 16, width: 80 }}
+                                    onPress={() => setCreatePostModalVisible(true)}
                                 >
                                     Đăng
                                 </GlassButton>
@@ -575,6 +589,12 @@ export default function FeedScreen() {
                         );
                     }
                 }}
+            />
+
+            <CreatePostModal
+                visible={createPostModalVisible}
+                onClose={() => setCreatePostModalVisible(false)}
+                onPostCreated={handlePostCreated}
             />
         </View>
     );
